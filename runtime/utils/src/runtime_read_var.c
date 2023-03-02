@@ -1,5 +1,5 @@
-#include "read_var.h"
-#include "check.h"
+#include "runtime_read_var.h"
+#include "runtime_check.h"
 
 //读取变长数字
 bool

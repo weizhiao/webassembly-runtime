@@ -1,24 +1,6 @@
 #include "loader.h"
 #include "wasm_native.h"
 
-static char *
-get_import_type_str(const uint8 *str, uint32 len, char *error_buf, uint32 error_buf_size)
-{
-    if (!check_utf8_str(str, len)) {
-        set_error_buf(error_buf, error_buf_size, "invalid UTF-8 encoding");
-        return NULL;
-    }
-
-    if (len == 0) {
-        return "";
-    }
-
-    char *c_str = (char *)str - 1;
-    memmove(c_str, c_str + 1, len);
-    c_str[len] = '\0';
-    return c_str;
-}
-
 static bool
 load_global_import(const uint8 **p_buf, const uint8 *buf_end, WASMGlobalImport *global, char *error_buf,
                    uint32 error_buf_size)
@@ -247,19 +229,17 @@ load_import_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
         for (i = 0; i < import_count; i++) {
             /* 加载 module name */
             read_leb_uint32(p, p_end, name_len);
-            if (!(sub_module_name = get_import_type_str(
-                p, name_len, error_buf, error_buf_size))) {
+            if (!load_utf8_str(
+                &p, name_len, &sub_module_name, error_buf, error_buf_size)) {
                 return false;
             }
-            p += name_len;
 
             /* 加载 field name */
             read_leb_uint32(p, p_end, name_len);
-            if (!(field_name = get_import_type_str(
-                p, name_len, error_buf, error_buf_size))) {
+            if (!load_utf8_str(
+                &p, name_len, &field_name, error_buf, error_buf_size)) {
                 return false;
             }
-            p += name_len;
 
             kind = read_uint8(p);
 

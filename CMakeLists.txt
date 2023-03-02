@@ -32,9 +32,7 @@ if (NOT DEFINED WAMR_BUILD_TARGET)
   endif ()
 endif ()
 
-if (NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-endif ()
+add_definitions("-Wall -g")
 
 set (RUNTIME_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 

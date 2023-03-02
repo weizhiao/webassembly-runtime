@@ -1,9 +1,7 @@
 #ifndef _LOADER_H
 #define _LOADER_H
 
-#include "wasm_type.h"
-#include "utils.h"
-#include "wasm_memory.h"
+#include "loader_common.h"
 
 //加载type段
 bool

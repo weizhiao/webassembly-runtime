@@ -1,5 +1,6 @@
 #include "wasm_native.h"
-#include "log.h"
+#include "wasm_memory.h"
+#include "runtime_log.h"
 
 #if !defined(BH_PLATFORM_ZEPHYR) && !defined(BH_PLATFORM_ALIOS_THINGS) \
     && !defined(BH_PLATFORM_OPENRTOS) && !defined(BH_PLATFORM_ESP_IDF)

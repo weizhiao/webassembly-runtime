@@ -1,4 +1,4 @@
-#include "adjust.h"
+#include "runtime_adjust.h"
 
 void
 adjust_table_max_size(uint32 init_size, uint32 max_size_flag, uint32 *max_size)

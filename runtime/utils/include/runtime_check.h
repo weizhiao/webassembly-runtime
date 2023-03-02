@@ -1,5 +1,5 @@
-#ifndef _CHECK_H
-#define _CHECK_H
+#ifndef _RUNTIME_CHECK_H
+#define _RUNTIME_CHECK_H
 
 #include "platform.h"
 #include "wasm_type.h"

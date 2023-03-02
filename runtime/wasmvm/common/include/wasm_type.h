@@ -80,7 +80,6 @@ typedef enum {
     Package_Type_Unknown = 0xFFFF
 } package_type_t;
 
-typedef struct WASMGlobal WASMGlobal;
 
 typedef union V128 {
     int8 i8x16[16];
@@ -105,8 +104,6 @@ typedef union WASMValue {
 } WASMValue;
 
 typedef struct InitializerExpression {
-    /* type of INIT_EXPR_TYPE_XXX */
-    /* it actually is instr, in some places, requires constant only */
     uint8 init_expr_type;
     WASMValue u;
 } InitializerExpression;
@@ -131,7 +128,7 @@ typedef struct WASMTable {
 } WASMTable;
 
 typedef struct WASMMemory {
-    uint32 flags;
+    uint8 flags;
     uint32 num_bytes_per_page;
     uint32 init_page_count;
     uint32 max_page_count;
@@ -185,11 +182,17 @@ typedef struct WASMImport {
     } u;
 } WASMImport;
 
+typedef struct WASMLocal {
+    uint32 count;
+    uint8 type;
+}WASMLocal;
+
 typedef struct WASMFunction {
     /* the type of function */
     WASMType *func_type;
     uint32 local_count;
-    uint8 *local_types;
+    
+    WASMLocal* local_entry;
 
     /* cell num of parameters */
     uint16 param_cell_num;
@@ -208,15 +211,11 @@ typedef struct WASMFunction {
 
 }WASMFunction;
 
-struct WASMGlobal {
+typedef struct WASMGlobal {
     uint8 type;
     bool is_mutable;
     InitializerExpression init_expr;
-#if WASM_ENABLE_FAST_JIT != 0
-    /* The data offset of current global in global data */
-    uint32 data_offset;
-#endif
-};
+}WASMGlobal;
 
 typedef struct WASMExport {
     char *name;
@@ -224,26 +223,21 @@ typedef struct WASMExport {
     uint32 index;
 } WASMExport;
 
-typedef struct WASMTableSeg {
+typedef struct WASMElement {
     /* 0 to 7 */
     uint32 mode;
-    /* funcref or externref, elemkind will be considered as funcref */
     uint32 elem_type;
     bool is_dropped;
-    /* optional, only for active */
     uint32 table_index;
     InitializerExpression base_offset;
     uint32 function_count;
     uint32 *func_indexes;
-} WASMTableSeg;
+} WASMElement;
 
 typedef struct WASMDataSeg {
     uint32 memory_index;
     InitializerExpression base_offset;
     uint32 data_length;
-#if WASM_ENABLE_BULK_MEMORY != 0
-    bool is_passive;
-#endif
     uint8 *data;
 } WASMDataSeg;
 
@@ -332,7 +326,7 @@ typedef struct WASMModule {
     uint32 memory_count;
     uint32 global_count;
     uint32 export_count;
-    uint32 table_seg_count;
+    uint32 element_count;
     /* data seg count read from data segment section */
     uint32 data_seg_count;
 
@@ -353,8 +347,8 @@ typedef struct WASMModule {
     WASMMemory *memories;
     WASMGlobal *globals;
     WASMExport *exports;
-    WASMTableSeg *table_segments;
-    WASMDataSeg **data_segments;
+    WASMElement *elements;
+    WASMDataSeg *data_segments;
     uint32 start_function;
 
     /* total global variable size */
@@ -434,28 +428,17 @@ wasm_string_equal(const char *s1, const char *s2)
     return strcmp(s1, s2) == 0 ? true : false;
 }
 
-/**
- * Return the byte size of value type.
- *
- */
+//返回value type的字节数
 inline static uint32
 wasm_value_type_size(uint8 value_type)
 {
     switch (value_type) {
         case VALUE_TYPE_I32:
         case VALUE_TYPE_F32:
-#if WASM_ENABLE_REF_TYPES != 0
-        case VALUE_TYPE_FUNCREF:
-        case VALUE_TYPE_EXTERNREF:
-#endif
             return sizeof(int32);
         case VALUE_TYPE_I64:
         case VALUE_TYPE_F64:
             return sizeof(int64);
-#if WASM_ENABLE_SIMD != 0
-        case VALUE_TYPE_V128:
-            return sizeof(int64) * 2;
-#endif
         case VALUE_TYPE_VOID:
             return 0;
     }

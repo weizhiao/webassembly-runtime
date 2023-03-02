@@ -1,5 +1,5 @@
-#ifndef _LOG_H
-#define _LOG_H
+#ifndef _RUNTIME_LOG_H
+#define _RUNTIME_LOG_H
 
 #include "platform.h"
 

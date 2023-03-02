@@ -1,5 +1,5 @@
-#ifndef _ADJUST_H
-#define _ADJUST_H
+#ifndef _RUNTIME_ADJUST_H
+#define _RUNTIME_ADJUST_H
 
 #include "platform.h"
 #include "wasm_type.h"

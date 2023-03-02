@@ -1,4 +1,4 @@
-#include "check.h"
+#include "runtime_check.h"
 
 bool
 check_table_max_size(uint32 init_size, uint32 max_size, char *error_buf,

@@ -227,6 +227,6 @@ wasm_loader(uint8 *buf, uint32 size, char *error_buf, uint32 error_buf_size){
 
     return module;
 fail:
-    wasm_loader_unload(module);
+    //wasm_loader_unload(module);
     return NULL;
 }

@@ -1,5 +1,5 @@
-#ifndef _READ_VAR_H
-#define _READ_VAR_H
+#ifndef _RUNTIME_READ_VAR_H
+#define _RUNTIME_READ_VAR_H
 
 #include"platform.h"
 

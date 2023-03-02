@@ -1,6 +1,6 @@
-#include "log.h"
+#include "runtime_log.h"
 
-static uint32 log_verbose_level = LOG_LEVEL_WARNING;
+static uint32 log_verbose_level = LOG_LEVEL_VERBOSE;
 
 void
 log_set_verbose_level(uint32 level)
