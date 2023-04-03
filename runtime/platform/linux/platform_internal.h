@@ -38,8 +38,12 @@ typedef pthread_cond_t korp_cond;
 typedef pthread_t korp_thread;
 typedef sem_t korp_sem;
 
+#define bh_socket_t int
+
 #ifndef BH_PLATFORM_LINUX
 #define BH_PLATFORM_LINUX
 #endif
+
+#define BH_THREAD_DEFAULT_PRIORITY 0
 
 #endif 

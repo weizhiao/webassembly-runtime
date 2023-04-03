@@ -26,6 +26,10 @@ check_utf8_str(const uint8 *str, uint32 len);
 void
 set_error_buf(char *error_buf, uint32 error_buf_size, const char *string);
 
+//设置加载时的错误类型
+void
+set_error_buf_v(char *error_buf, uint32 error_buf_size, const char *format, ...);
+
 //检查类型是否为value
 bool
 is_value_type(uint8 type);

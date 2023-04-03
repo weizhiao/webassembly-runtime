@@ -1,18 +1,14 @@
 cmake_minimum_required (VERSION 3.14)
 
+set (CMAKE_C_COMPILER "/usr/bin/gcc")
 #include(CheckPIESupported)
 
 project (runtime)
-
 #set (CMAKE_VERBOSE_MAKEFILE OFF)
 
 if(NOT DEFINED RUNTIME_BUILD_PLATFORM)
   set (RUNTIME_BUILD_PLATFORM "linux")
 endif()
-
-# 重置链接参数
-set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
-set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
 
 set (CMAKE_C_STANDARD 99)
 
@@ -35,17 +31,22 @@ endif ()
 add_definitions("-Wall -g")
 
 set (RUNTIME_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set (PRODUCT_DIR ${RUNTIME_ROOT_DIR}/product/${RUNTIME_BUILD_PLATFORM})
 
+#对应平台的cmake
+include (${PRODUCT_DIR}/config.cmake)
+
+#运行时本身的cmake
 include (${RUNTIME_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 
-add_executable (runtime ${MAIN_SOURCE} ${WAMR_RUNTIME_LIB_SOURCE})
+add_executable (runtime ${MAIN_SOURCE} ${WASM_RUNTIME_LIB_SOURCE})
 
 #check_pie_supported()
 #set_target_properties (runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 #install (TARGETS runtime DESTINATION bin)
 
-#target_link_libraries (runtime vmlib ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
+target_link_libraries (runtime -lm -lpthread)
 
 #add_library (libiwasm SHARED ${WAMR_RUNTIME_LIB_SOURCE})
 

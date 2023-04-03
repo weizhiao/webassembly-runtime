@@ -1,0 +1,5 @@
+set (PLATFORM_POSIX_DIR ${CMAKE_CURRENT_LIST_DIR})
+
+file (GLOB_RECURSE source_all ${PLATFORM_POSIX_DIR}/*.c)
+
+set (PLATFORM_POSIX_SOURCE ${source_all} )

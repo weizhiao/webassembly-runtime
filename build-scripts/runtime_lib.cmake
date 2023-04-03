@@ -1,13 +1,20 @@
+#根据功能启用宏
+if (RUNTIME_BUILD_BULK_MEMORY EQUAL 1)
+    add_definitions (-DWASM_ENABLE_BULK_MEMORY=1)
+    message ("     Bulk memory feature enabled")
+else ()
+    add_definitions (-DWASM_ENABLE_BULK_MEMORY=0)
+    message ("     Bulk memory feature disabled")
+endif ()
+
+#设置目录
 set (RUNTIME_DIR ${RUNTIME_ROOT_DIR}/runtime)
 set (PLATFORM_DIR ${RUNTIME_DIR}/platform/${RUNTIME_BUILD_PLATFORM})
 set (UTILS_DIR ${RUNTIME_DIR}/utils)
 set (WASMVM_DIR ${RUNTIME_DIR}/wasmvm)
-set (PRODUCT_DIR ${RUNTIME_ROOT_DIR}/product/${RUNTIME_BUILD_PLATFORM})
 
 include(${PLATFORM_DIR}/platform.cmake)
 include(${UTILS_DIR}/utils.cmake)
-#在config中设置启用的功能
-include (${PRODUCT_DIR}/config.cmake)
 include (${WASMVM_DIR}/wasmvm.cmake)
 
 set (source_all
@@ -16,4 +23,4 @@ set (source_all
     ${WASMVM_SOURCE}
 )
 
-set (WAMR_RUNTIME_LIB_SOURCE ${source_all})
+set (WASM_RUNTIME_LIB_SOURCE ${source_all})

@@ -84,6 +84,20 @@ set_error_buf(char *error_buf, uint32 error_buf_size, const char *string)
     }
 }
 
+void
+set_error_buf_v(char *error_buf, uint32 error_buf_size, const char *format, ...)
+{
+    va_list args;
+    char buf[128];
+
+    if (error_buf != NULL) {
+        va_start(args, format);
+        vsnprintf(buf, sizeof(buf), format, args);
+        va_end(args);
+        snprintf(error_buf, error_buf_size, "WASM module load failed: %s", buf);
+    }
+}
+
 bool
 is_value_type(uint8 type)
 {

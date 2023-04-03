@@ -1,9 +1,19 @@
 #include "runtime_read_var.h"
 #include "runtime_check.h"
 
+static uint32 maxloopcount[] = {
+    0, 0, 4, 0, 4, 9
+};
+
+static const uint64 mask_leb1 = (uint64)-1 << 1;
+static const uint64 mask_lebu32 = (uint64)-1 << 32;
+static const uint64 mask_lebi32 = (uint64)-1 << 31;
+
+static const uint64 mask_overbits_lebi32 = (uint64)0b1111 << 31;
+
 //读取变长数字
 bool
-read_leb(uint8 **p_buf, const uint8 *buf_end, uint32 maxbits, bool sign,
+read_leb(uint8 **p_buf, const uint8 *buf_end, LEB type,
          uint64 *p_result, char *error_buf, uint32 error_buf_size)
 {
     const uint8 *buf = *p_buf;
@@ -11,43 +21,72 @@ read_leb(uint8 **p_buf, const uint8 *buf_end, uint32 maxbits, bool sign,
     uint32 shift = 0;
     uint32 offset = 0, bcnt = 0;
     uint8 byte;
-    uint64 mask;
     uint64 over_bits;
+    uint32 loopcount = maxloopcount[type];
 
     while (true) {
-        if (bcnt + 1 > (maxbits + 6) / 7) {
+        if (bcnt > loopcount) {
             goto fail;
         }
         byte = buf[offset];
         offset += 1;
-        result |= ((byte & 0x7f) << shift);
+        result |= ((byte & (uint64)0x7f) << shift);
         shift += 7;
         bcnt += 1;
         if ((byte & 0x80) == 0) {
             break;
         }
     }
-    
-    mask = (uint64)-1;
-    mask = mask << maxbits;
-    over_bits = result & mask;//记录溢出maxbits的比特
 
-    if(!sign){
-        if(over_bits) goto fail;
+    switch(type){
+        case Varuint1:
+            over_bits = mask_leb1 & result;
+            if (over_bits) {
+                goto fail;
+            }
+            break;
+        case Varuint7:
+            break;
+        case Varuint32:
+            over_bits = mask_lebu32 & result;
+            if (over_bits) {
+                goto fail;
+            }
+            break;
+        case Varint7:
+            if (byte & 0x40) {
+                result |= (~((uint64)0)) << shift;
+            }
+            break;
+        case Varint32:
+            over_bits = mask_lebi32 & result;
+            if (!over_bits && byte & 0x40) {
+                result |= (~((uint64)0)) << shift;
+            }
+            else if (over_bits && !(over_bits ^ mask_overbits_lebi32)) {
+                result |= (~((uint64)0)) << shift;
+            }
+            else if (over_bits && over_bits ^ mask_overbits_lebi32) {
+                goto fail;
+            }
+            break;
+        case Varint64:
+            if (shift < 64) {
+                if (byte & 0x40) {
+                    result |= (~((uint64)0)) << shift;
+                }
+            }
+            else {
+                bool sign_bit_set = byte & 0x1;
+                int top_bits = byte & 0xfe;
+
+                if ((sign_bit_set && top_bits != 0x7e)
+                    || (!sign_bit_set && top_bits != 0))
+                    goto fail;
+            }
+            break;
     }
-    else{
-        if(!over_bits && byte & 0x40) {
-            result |= (~((uint64)0)) << shift;
-        }
-        else if(over_bits){
-            byte = (uint8)(result >> (maxbits - 1)) & (uint8)1;//获取maxbits处的字节值
-            if(!byte) goto fail;//为0则说明result不是负数，那么溢出的肯定有问题
-            mask = mask ^ over_bits;//做异或运算，处于overbits中的位若不为0，则说明不是全1。
-            mask = mask <<(sizeof(uint64) * 8 - shift);
-            if(mask) goto fail;
-            result |= (~((uint64)0)) << shift;
-        } 
-    }
+
     *p_buf += offset;
     *p_result = result;
     return true;

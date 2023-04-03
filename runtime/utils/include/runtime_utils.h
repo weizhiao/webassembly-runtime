@@ -4,6 +4,7 @@
 #include "runtime_check.h"
 #include "runtime_read_var.h"
 #include "runtime_log.h"
-#include "runtime_adjust.h"
+#include "bh_common.h"
+#include "bh_list.h"
 
 #endif

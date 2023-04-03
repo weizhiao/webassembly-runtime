@@ -1,0 +1,21 @@
+{
+    "files.associations": {
+        "instantiate.h": "c",
+        "wasm_type.h": "c",
+        "platform.h": "c",
+        "wasmvm_init.h": "c",
+        "wasmtime_ssp.h": "c",
+        "wasm_wasi.h": "c",
+        "wasm_exec_env.h": "c",
+        "wasm_exception.h": "c",
+        "wasm_interp.h": "c",
+        "wasm_runtime_api.h": "c",
+        "wasm_runtime_loader_api.h": "c",
+        "wasm_loader.h": "c",
+        "wasm_loader_common.h": "c",
+        "runtime_utils.h": "c",
+        "platform_api.h": "c",
+        "bh_list.h": "c",
+        "wasm_runtime_init_api.h": "c"
+    }
+}
