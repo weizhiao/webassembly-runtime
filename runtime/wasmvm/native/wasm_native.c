@@ -226,7 +226,6 @@ wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func, uint
     }
 
     func_ptr = func->func_ptr;
-    exec_env->attachment = attachment;
     if (result_count == 0) {
         invokeNative_Void(func_ptr, argv1, n_stacks);
     }
@@ -254,7 +253,6 @@ wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func, uint
                 break;
         }
     }
-    exec_env->attachment = NULL;
 
     ret = !wasm_get_exception(module) ? true : false;
     

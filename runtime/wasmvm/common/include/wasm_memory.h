@@ -32,4 +32,7 @@ uint32
 wasm_runtime_addr_native_to_app(WASMModule *module_inst_comm,
                                 void *native_ptr);
 
+bool
+wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count);
+
 #endif

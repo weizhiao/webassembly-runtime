@@ -5,33 +5,20 @@
 #include "wasm_exception.h"
 #include "wasm_exec_env.h"
 
-typedef struct WASMInterpFrame {
+typedef struct WASMFuncFrame {
     /* The frame of the caller that are calling the current function. */
-    struct WASMInterpFrame *prev_frame;
+    struct WASMFuncFrame *prev_frame;
 
-    /* The current WASM function. */
     WASMFunction *function;
 
     /* Instruction pointer of the bytecode array.  */
     uint8 *ip;
 
-    uint32 *sp_bottom;
-    uint32 *sp_boundary;
+    uint32 frame_csp_num;
+
     uint32 *sp;
-
-    WASMBranchBlock *csp_bottom;
-    WASMBranchBlock *csp_boundary;
-    WASMBranchBlock *csp;
-
-    /**
-     * Frame data, the layout is:
-     *  lp: parameters and local variables
-     *  sp_bottom to sp_boundary: wasm operand stack
-     *  csp_bottom to csp_boundary: wasm label stack
-     *  jit spill cache: only available for fast jit
-     */
-    uint32 lp[1];
-} WASMInterpFrame;
+    uint32 *lp;
+} WASMFuncFrame;
 
 /**
  * Calculate the size of interpreter area of frame of a function.
@@ -46,7 +33,7 @@ wasm_interp_interp_frame_size(unsigned all_cell_num)
 {
     unsigned frame_size;
 
-    frame_size = (uint32)offsetof(WASMInterpFrame, lp) + all_cell_num * 4;
+    frame_size = (uint32)offsetof(WASMFuncFrame, lp) + all_cell_num * 4;
     return align_uint(frame_size, 4);
 }
 

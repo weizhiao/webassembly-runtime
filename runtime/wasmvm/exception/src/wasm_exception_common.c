@@ -12,7 +12,6 @@ wasm_get_exception(WASMModuleInstance *module_inst)
 void
 wasm_set_exception(WASMModuleInstance *module_inst, const char *exception)
 {
-    WASMExecEnv *exec_env = NULL;
 
     if (exception) {
         snprintf(module_inst->cur_exception, sizeof(module_inst->cur_exception),

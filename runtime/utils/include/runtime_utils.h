@@ -5,6 +5,5 @@
 #include "runtime_read_var.h"
 #include "runtime_log.h"
 #include "bh_common.h"
-#include "bh_list.h"
 
 #endif

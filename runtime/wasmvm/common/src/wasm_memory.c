@@ -19,11 +19,11 @@ wasm_runtime_realloc(void *ptr, uint32 size)
 }
 
 bool
-wasm_enlarge_memory_internal(WASMModuleInstance *module, uint32 inc_page_count)
+wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count)
 {
     WASMMemory *memory = module->memories;
-    uint8 *memory_data_old, *memory_data_new, *heap_data_old;
-    uint32 num_bytes_per_page, heap_size, total_size_old;
+    uint8 *memory_data_old, *memory_data_new;
+    uint32 num_bytes_per_page, total_size_old;
     uint32 cur_page_count, max_page_count, total_page_count;
     uint64 total_size_new;
     bool ret = true;
@@ -31,8 +31,6 @@ wasm_enlarge_memory_internal(WASMModuleInstance *module, uint32 inc_page_count)
     if (!memory)
         return false;
 
-    heap_data_old = memory->heap_data;
-    heap_size = (uint32)(memory->heap_data_end - memory->heap_data);
 
     memory_data_old = memory->memory_data;
     total_size_old = memory->memory_data_size;
@@ -61,20 +59,11 @@ wasm_enlarge_memory_internal(WASMModuleInstance *module, uint32 inc_page_count)
 
     if (!(memory_data_new =
               wasm_runtime_realloc(memory_data_old, (uint32)total_size_new))) {
-        if (!(memory_data_new = wasm_runtime_malloc((uint32)total_size_new))) {
-            return false;
-        }
-        if (memory_data_old) {
-            memcpy(memory_data_new, memory_data_old, total_size_old);
-            wasm_runtime_free(memory_data_old);
-        }
+        return false;
     }
 
     memset(memory_data_new + total_size_old, 0,
            (uint32)total_size_new - total_size_old);
-
-    memory->heap_data = memory_data_new + (heap_data_old - memory_data_old);
-    memory->heap_data_end = memory->heap_data + heap_size;
 
     memory->num_bytes_per_page = num_bytes_per_page;
     memory->cur_page_count = total_page_count;
@@ -83,22 +72,6 @@ wasm_enlarge_memory_internal(WASMModuleInstance *module, uint32 inc_page_count)
 
     memory->memory_data = memory_data_new;
     memory->memory_data_end = memory_data_new + (uint32)total_size_new;
-
-#if WASM_ENABLE_FAST_JIT != 0 || WASM_ENABLE_JIT != 0 || WASM_ENABLE_AOT != 0
-#if UINTPTR_MAX == UINT64_MAX
-    memory->mem_bound_check_1byte.u64 = total_size_new - 1;
-    memory->mem_bound_check_2bytes.u64 = total_size_new - 2;
-    memory->mem_bound_check_4bytes.u64 = total_size_new - 4;
-    memory->mem_bound_check_8bytes.u64 = total_size_new - 8;
-    memory->mem_bound_check_16bytes.u64 = total_size_new - 16;
-#else
-    memory->mem_bound_check_1byte.u32[0] = (uint32)total_size_new - 1;
-    memory->mem_bound_check_2bytes.u32[0] = (uint32)total_size_new - 2;
-    memory->mem_bound_check_4bytes.u32[0] = (uint32)total_size_new - 4;
-    memory->mem_bound_check_8bytes.u32[0] = (uint32)total_size_new - 8;
-    memory->mem_bound_check_16bytes.u32[0] = (uint32)total_size_new - 16;
-#endif
-#endif
 
     return ret;
 }
@@ -148,26 +121,6 @@ wasm_runtime_validate_native_addr(WASMModule *module_inst_comm,
 fail:
     wasm_set_exception(module_inst, "out of bounds memory access");
     return false;
-}
-
-bool
-wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count)
-{
-    bool ret = false;
-
-#if WASM_ENABLE_SHARED_MEMORY != 0
-    WASMSharedMemNode *node =
-        wasm_module_get_shared_memory((WASMModuleCommon *)module->module);
-    if (node)
-        os_mutex_lock(&node->shared_mem_lock);
-#endif
-    ret = wasm_enlarge_memory_internal(module, inc_page_count);
-#if WASM_ENABLE_SHARED_MEMORY != 0
-    if (node)
-        os_mutex_unlock(&node->shared_mem_lock);
-#endif
-
-    return ret;
 }
 
 void 
@@ -276,17 +229,6 @@ wasm_module_destory(WASMModule *module, Stage stage)
         wasm_runtime_free(module->data_segments);
     }
 
-#if WASM_ENABLE_FAST_INTERP == 0
-    if (module->br_table_cache_list) {
-        BrTableCache *node = bh_list_first_elem(module->br_table_cache_list);
-        BrTableCache *node_next;
-        while (node) {
-            node_next = bh_list_elem_next(node);
-            wasm_runtime_free(node);
-            node = node_next;
-        }
-    }
-#endif
     wasm_runtime_free(module);
 }
 

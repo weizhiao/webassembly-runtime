@@ -22,20 +22,13 @@ typedef struct BranchBlock {
     uint8 *else_addr;
     uint8 *end_addr;
     uint32 stack_cell_num;
-#if WASM_ENABLE_FAST_INTERP != 0
-    uint16 dynamic_offset;
-    uint8 *code_compiled;
-    BranchBlockPatch *patch_list;
-    /* This is used to save params frame_offset of of if block */
-    int16 *param_frame_offsets;
-#endif
 
-    /* Indicate the operand stack is in polymorphic state.
-     * If the opcode is one of unreachable/br/br_table/return, stack is marked
-     * to polymorphic state until the block's 'end' opcode is processed.
-     * If stack is in polymorphic state and stack is empty, instruction can
-     * pop any type of value directly without decreasing stack top pointer
-     * and stack cell num. */
+    uint32 *table_stack;
+    uint32 *table_stack_bottom;
+    uint32 table_stack_size;
+    uint32 table_stack_num;
+    uint32 branch_table_end_idx;
+
     bool is_stack_polymorphic;
 } BranchBlock;
 
@@ -56,34 +49,12 @@ typedef struct WASMLoaderContext {
     uint32 csp_num;
     uint32 max_csp_num;
 
-#if WASM_ENABLE_FAST_INTERP != 0
-    /* frame offset stack */
-    int16 *frame_offset;
-    int16 *frame_offset_bottom;
-    int16 *frame_offset_boundary;
-    uint32 frame_offset_size;
-    int16 dynamic_offset;
-    int16 start_dynamic_offset;
-    int16 max_dynamic_offset;
+    WASMBranchTable *branch_table;
+    WASMBranchTable *branch_table_bottom;
+    WASMBranchTable *branch_table_boundary;
+    uint32 branch_table_num;
+    uint32 branch_table_size;
 
-    /* preserved local offset */
-    int16 preserved_local_offset;
-
-    /* const buffer */
-    uint8 *const_buf;
-    uint16 num_const;
-    uint16 const_cell_num;
-    uint32 const_buf_size;
-
-    /* processed code */
-    uint8 *p_code_compiled;
-    uint8 *p_code_compiled_end;
-    uint32 code_compiled_size;
-    /* If the last opcode will be dropped, the peak memory usage will be larger
-     * than the final code_compiled_size, we record the peak size to ensure
-     * there will not be invalid memory access during second traverse */
-    uint32 code_compiled_peak_size;
-#endif
 } WASMLoaderContext;
 
 

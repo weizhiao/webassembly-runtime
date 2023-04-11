@@ -2,71 +2,7 @@
 #include "wasm_native.h"
 #include "wasm_wasi.h"
 #include "wasm_memory.h"
-#include "wasm_executor.h"
-#include "wasm_exec_env.h"
 #include "wasm_exception.h"
-
-WASMFunction *
-wasm_lookup_function(const WASMModule *module_inst, const char *name)
-{
-    uint32 i;
-    for (i = 0; i < module_inst->export_func_count; i++)
-        if (!strcmp(module_inst->export_functions[i].name, name))
-            return module_inst->export_functions[i].function;
-    return NULL;
-}
-
-static bool
-execute_post_instantiate_functions(WASMModule *module)
-{
-    WASMFunction *start_func = NULL;
-    WASMFunction *initialize_func = NULL;
-    WASMExecEnv *exec_env = NULL;
-    bool ret = false;
-
-    if(module->start_function !=(uint32)-1) {
-        start_func = module->functions + module->start_function;
-    }
-
-#if WASM_ENABLE_LIBC_WASI != 0
-    /*
-     * WASI reactor instances may assume that _initialize will be called by
-     * the environment at most once, and that none of their other exports
-     * are accessed before that call.
-     */
-    initialize_func =
-            wasm_lookup_function(module, "_initialize");
-#endif
-
-    if (!start_func && !initialize_func) {
-        /* No post instantiation functions to call */
-        return true;
-    }
-
-    if (!exec_env
-        && !(exec_env =
-                 wasm_exec_env_create(module,
-                                      module->default_wasm_stack_size))) {
-        wasm_set_exception(module, "allocate memory failed");
-        return false;
-    }
-
-    if (initialize_func
-        && !wasm_call_function(exec_env, initialize_func, 0, NULL)) {
-        goto fail;
-    }
-
-    /* Execute start function for both main insance and sub instance */
-    if (start_func && !wasm_call_function(exec_env, start_func, 0, NULL)) {
-        goto fail;
-    }
-
-    ret = true;
-
-fail:
-    //wasm_exec_env_destroy(exec_env);
-    return ret;
-}
 
 static bool
 copy_string_array(const char *array[], uint32 array_size, char **buf_ptr,
@@ -108,8 +44,8 @@ copy_string_array(const char *array[], uint32 array_size, char **buf_ptr,
     return true;
 }
 
-static bool 
-wasi_context_init(WASMModule *module_inst,
+bool 
+wasm_runtime_wasi_init(WASMModule *module_inst,
                        const char *dir_list[], uint32 dir_count,
                        const char *map_dir_list[], uint32 map_dir_count,
                        const char *env[], uint32 env_count,
@@ -312,36 +248,6 @@ fail:
         wasm_runtime_free(ns_lookup_buf);
     if (ns_lookup_list)
         wasm_runtime_free(ns_lookup_list);
-    return false;
-}
-
-bool
-wasm_runtime_init_wasi(WASMModule *module_inst,
-                       const char *dir_list[], uint32 dir_count,
-                       const char *map_dir_list[], uint32 map_dir_count,
-                       const char *env[], uint32 env_count,
-                       const char *addr_pool[], uint32 addr_pool_size,
-                       const char *ns_lookup_pool[], uint32 ns_lookup_pool_size,
-                       char *argv[], uint32 argc, 
-                       char *error_buf, uint32 error_buf_size)
-{
-    if(!wasi_context_init(module_inst,
-                       dir_list, dir_count,
-                       map_dir_list, map_dir_count,
-                       env, env_count,
-                       addr_pool, addr_pool_size,
-                       ns_lookup_pool, ns_lookup_pool_size,
-                       argv, argc, -1, -1,
-                       -1, error_buf, error_buf_size)){
-                            goto fail;
-                       }
-    if(!execute_post_instantiate_functions(module_inst)){
-        goto fail;
-    }
-
-    return true;
-
-fail:
     return false;
 }
 

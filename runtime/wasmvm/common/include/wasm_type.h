@@ -2,7 +2,6 @@
 #define _WASM_TYPE_H
 
 #include "platform.h"
-#include "bh_list.h"
 
 /** Value Type */
 #define VALUE_TYPE_I32 0x7F
@@ -157,24 +156,18 @@ typedef struct WASMDataSeg {
     uint8 *data;
 } WASMDataSeg;
 
-typedef struct BlockAddr {
-    const uint8 *start_addr;
-    uint8 *else_addr;
-    uint8 *end_addr;
-} BlockAddr;
-
 typedef struct StringNode {
     struct StringNode *next;
     char *str;
 } StringNode, *StringList;
 
-typedef struct BrTableCache {
-    struct BrTableCache *next;
-    /* Address of br_table opcode */
-    uint8 *br_table_op_addr;
-    uint32 br_count;
-    uint32 br_depths[1];
-} BrTableCache;
+typedef struct WASMBranchTable {
+    uint8 *ip;
+    uint32 stp;
+    uint32 push;
+    uint32 pop;
+}WASMBranchTable;
+
 
 /**
  * When LLVM JIT, WAMR compiler or AOT is enabled, we should ensure that
@@ -237,13 +230,6 @@ typedef struct WASMMemory {
     uint8 * memory_data;
     /* Memory data end address */
     uint8 * memory_data_end;
-
-    /* Heap data base address */
-    uint8 * heap_data;
-    /* Heap data end address */
-    uint8 * heap_data_end;
-    /* The heap created */
-    void * heap_handle;
 
 }WASMMemory, WASMMemoryImport;
 
@@ -308,6 +294,9 @@ typedef struct WASMFunction {
     uint8 *result_types;
     uint32 max_stack_cell_num;
     uint32 max_block_num;
+
+    WASMBranchTable * branch_table;
+
 }WASMFunctionImport, WASMFunction;
 
 typedef struct WASMExportFuncInstance {
@@ -329,16 +318,6 @@ typedef struct WASMExportMemInstance {
     char *name;
     WASMMemory *memory;
 } WASMExportMemInstance;
-
-/* wasm-c-api import function info */
-typedef struct CApiFuncImport {
-    /* host func pointer after linked */
-    void *func_ptr_linked;
-    /* whether the host func has env argument */
-    bool with_env_arg;
-    /* the env argument of the host func */
-    void *env_arg;
-} CApiFuncImport;
 
 struct WASMExecEnv;
 struct WASIContext;
@@ -380,7 +359,8 @@ typedef struct WASMModule {
     uint32 start_function;
 
     //默认的栈大小
-    uint32 default_wasm_stack_size;
+    uint32 default_value_stack_size;
+    uint32 default_execution_stack_size;
 
     //全局数据
     uint8 *global_data;
@@ -393,19 +373,9 @@ typedef struct WASMModule {
     uint32 export_func_count;
     WASMExportFuncInstance *export_functions;
 
-    bh_list br_table_cache_list_head;
-    bh_list *br_table_cache_list;
-
     bool possible_memory_grow;
 
 }WASMModule,WASMModuleInstance;
-
-typedef struct WASMBranchBlock {
-    uint8 *begin_addr;
-    uint8 *target_addr;
-    uint32 *frame_sp;
-    uint32 cell_num;
-} WASMBranchBlock;
 
 /* Execution environment, e.g. stack info */
 /**
@@ -421,30 +391,6 @@ align_uint(unsigned v, unsigned b)
 {
     unsigned m = b - 1;
     return (v + m) & ~m;
-}
-
-/**
- * Return the hash value of c string.
- */
-inline static uint32
-wasm_string_hash(const char *str)
-{
-    unsigned h = (unsigned)strlen(str);
-    const uint8 *p = (uint8 *)str;
-    const uint8 *end = p + h;
-
-    while (p != end)
-        h = ((h << 5) - h) + *p++;
-    return h;
-}
-
-/**
- * Whether two c strings are equal.
- */
-inline static bool
-wasm_string_equal(const char *s1, const char *s2)
-{
-    return strcmp(s1, s2) == 0 ? true : false;
 }
 
 //返回value type的字节数
@@ -480,53 +426,5 @@ wasm_get_cell_num(const uint8 *types, uint32 type_count)
     return cell_num;
 }
 
-// inline static uint32
-// wasm_get_smallest_type_idx(WASMType **types, uint32 type_count,
-//                            uint32 cur_type_idx)
-// {
-//     uint32 i;
-
-//     for (i = 0; i < cur_type_idx; i++) {
-//         if (wasm_type_equal(types[cur_type_idx], types[i]))
-//             return i;
-//     }
-//     (void)type_count;
-//     return cur_type_idx;
-// }
-
-// static inline uint32
-// block_type_get_param_types(BlockType *block_type, uint8 **p_param_types)
-// {
-//     uint32 param_count = 0;
-//     if (!block_type->is_value_type) {
-//         WASMType *wasm_type = block_type->u.type;
-//         *p_param_types = wasm_type->types;
-//         param_count = wasm_type->param_count;
-//     }
-//     else {
-//         *p_param_types = NULL;
-//         param_count = 0;
-//     }
-
-//     return param_count;
-// }
-
-// static inline uint32
-// block_type_get_result_types(BlockType *block_type, uint8 **p_result_types)
-// {
-//     uint32 result_count = 0;
-//     if (block_type->is_value_type) {
-//         if (block_type->u.value_type != VALUE_TYPE_VOID) {
-//             *p_result_types = &block_type->u.value_type;
-//             result_count = 1;
-//         }
-//     }
-//     else {
-//         WASMType *wasm_type = block_type->u.type;
-//         *p_result_types = wasm_type->types + wasm_type->param_count;
-//         result_count = wasm_type->result_count;
-//     }
-//     return result_count;
-// }
 
 #endif 
