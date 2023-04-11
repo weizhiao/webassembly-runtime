@@ -36,7 +36,6 @@ typedef struct WASMLoaderContext {
     /* frame ref stack */
     uint8 *frame_ref;
     uint8 *frame_ref_bottom;
-    uint8 *frame_ref_boundary;
     uint32 frame_ref_size;
     uint32 stack_cell_num;
     uint32 max_stack_cell_num;
@@ -44,14 +43,12 @@ typedef struct WASMLoaderContext {
     /* frame csp stack */
     BranchBlock *frame_csp;
     BranchBlock *frame_csp_bottom;
-    BranchBlock *frame_csp_boundary;
     uint32 frame_csp_size;
     uint32 csp_num;
     uint32 max_csp_num;
 
     WASMBranchTable *branch_table;
     WASMBranchTable *branch_table_bottom;
-    WASMBranchTable *branch_table_boundary;
     uint32 branch_table_num;
     uint32 branch_table_size;
 

@@ -74,13 +74,12 @@ wasm_loader_push_frame_ref(WASMLoaderContext *ctx, uint8 type, char *error_buf,
         return true;
 
     //如果空间不够会增加16个位置
-    if (ctx->frame_ref >= ctx->frame_ref_boundary) {
+    if (ctx->stack_cell_num == ctx->frame_ref_size) {
         ctx->frame_ref_bottom = wasm_runtime_realloc(ctx->frame_ref_bottom, ctx->frame_ref_size + 16);
         if (!ctx->frame_ref_bottom) {
             return false;
         }
         ctx->frame_ref_size += 16;
-        ctx->frame_ref_boundary = ctx->frame_ref_bottom + ctx->frame_ref_size;
         ctx->frame_ref = ctx->frame_ref_bottom + ctx->stack_cell_num;
     }
 
@@ -89,6 +88,7 @@ wasm_loader_push_frame_ref(WASMLoaderContext *ctx, uint8 type, char *error_buf,
     if (is_32bit_type(type) || type == VALUE_TYPE_ANY)
         goto check_stack_and_return;
 
+    *ctx->frame_ref++ = type;
     ctx->stack_cell_num++;
 
 check_stack_and_return:
@@ -138,15 +138,14 @@ wasm_loader_push_frame_csp(WASMLoaderContext *ctx, uint8 label_type,
                            char *error_buf, uint32 error_buf_size)
 {
     BranchBlock *frame_csp;
-    if (ctx->frame_csp >= ctx->frame_csp_boundary) {                 
+    if (ctx->csp_num == ctx->frame_csp_size) {                 
             ctx->frame_csp_bottom = wasm_runtime_realloc(                                                  
                 ctx->frame_csp_bottom,               
                 (ctx->frame_csp_size + 8) * sizeof(BranchBlock));
             if(!ctx->frame_csp_bottom){
                 return false;
             }
-            ctx->frame_csp_size += 8;    
-            ctx->frame_csp_boundary = ctx->frame_csp_bottom + ctx->frame_csp_size;              
+            ctx->frame_csp_size += 8;                  
             ctx->frame_csp = ctx->frame_csp_bottom + ctx->csp_num;        
     }
     frame_csp = ctx->frame_csp;
@@ -155,10 +154,8 @@ wasm_loader_push_frame_csp(WASMLoaderContext *ctx, uint8 label_type,
     frame_csp->start_addr = start_addr;
     frame_csp->stack_cell_num = ctx->stack_cell_num;
     frame_csp->table_stack_num = 0;
-    frame_csp->table_stack_size = 8;
-    if (!(frame_csp->table_stack_bottom = frame_csp->table_stack = wasm_runtime_malloc(sizeof(uint32) * 8))){
-        return false;
-    }
+    frame_csp->table_stack_size = 0;
+    frame_csp->table_stack_bottom = NULL;
 
     if (label_type == LABEL_TYPE_LOOP) {
         frame_csp->branch_table_end_idx = ctx->branch_table_num;
@@ -211,7 +208,9 @@ wasm_loader_pop_frame_csp(WASMLoaderContext *ctx, char *error_buf,
         }
     }
 
-    wasm_runtime_free(frame_csp->table_stack_bottom);
+    if (frame_csp->table_stack_num) {
+        wasm_runtime_free(frame_csp->table_stack_bottom);
+    }
 
     ctx->frame_csp--;
     ctx->csp_num--;
@@ -227,14 +226,13 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth, char 
     BranchBlock *frame_csp;
     BlockType *block_type;
     uint32 push;
-    if (ctx->branch_table >= ctx->branch_table_boundary) {
+    if (ctx->branch_table_num == ctx->branch_table_size) {
         ctx->branch_table_bottom = wasm_runtime_realloc(
-            ctx->branch_table_bottom, (ctx->branch_table_size + 8) * sizeof(WASMBranchTable));
+            ctx->branch_table_bottom, (ctx->branch_table_size + 16) * sizeof(WASMBranchTable));
         if (!ctx->branch_table_bottom) {
             return false;
         }
-        ctx->branch_table_size += 8;
-        ctx->branch_table_boundary = ctx->branch_table_bottom + ctx->branch_table_size;
+        ctx->branch_table_size += 16;
         ctx->branch_table = ctx->branch_table_bottom + ctx->branch_table_num;
     }
 
@@ -640,19 +638,19 @@ check_function_index(const WASMModule *module, uint32 function_index,
 static void
 wasm_loader_ctx_destroy(WASMLoaderContext *ctx)
 {
-    // if (ctx) {
-    //     if (ctx->frame_ref_bottom) {
-    //         wasm_runtime_free(ctx->frame_ref_bottom);
-    //     }
-    //     if (ctx->frame_csp_bottom) {
-    //         wasm_runtime_free(ctx->frame_csp_bottom);
-    //     }
-    //     wasm_runtime_free(ctx);
-    // }
+    if (ctx) {
+        if (ctx->frame_ref_bottom) {
+            wasm_runtime_free(ctx->frame_ref_bottom);
+        }
+        if (ctx->frame_csp_bottom) {
+            wasm_runtime_free(ctx->frame_csp_bottom);
+        }
+        wasm_runtime_free(ctx);
+    }
 }
 
 static WASMLoaderContext *
-wasm_loader_ctx_init(WASMFunction *func, char *error_buf, uint32 error_buf_size)
+wasm_loader_ctx_init(char *error_buf, uint32 error_buf_size)
 {
     WASMLoaderContext *loader_ctx =
         wasm_runtime_malloc(sizeof(WASMLoaderContext));
@@ -666,24 +664,18 @@ wasm_loader_ctx_init(WASMFunction *func, char *error_buf, uint32 error_buf_size)
     if (!(loader_ctx->frame_ref_bottom = loader_ctx->frame_ref = wasm_runtime_malloc(
               loader_ctx->frame_ref_size)))
         goto fail;
-    loader_ctx->frame_ref_boundary = loader_ctx->frame_ref_bottom + 32;
 
     //初始化控制栈
     loader_ctx->csp_num = 0;
-    loader_ctx->max_csp_num = 0;
     loader_ctx->frame_csp_size = 8;
     if (!(loader_ctx->frame_csp_bottom = loader_ctx->frame_csp = wasm_runtime_malloc(
               8 * sizeof(BranchBlock))))
         goto fail;
-    loader_ctx->frame_csp_boundary = loader_ctx->frame_csp_bottom + 8;
 
     //初始化控制表
     loader_ctx->branch_table_num = 0;
-    loader_ctx->branch_table_size = 8;
-    if(!(loader_ctx->branch_table_bottom = loader_ctx->branch_table = wasm_runtime_malloc(
-    loader_ctx->branch_table_size)))
-        goto fail;
-    loader_ctx->branch_table_boundary = loader_ctx->branch_table_bottom + 8;
+    loader_ctx->branch_table_size = 0;
+    loader_ctx->branch_table_bottom = NULL;
 
     return loader_ctx;
 
@@ -738,7 +730,7 @@ wasm_validator_code(WASMModule *module, WASMFunction *func,
     local_types = func->local_types;
     local_offsets = func->local_offsets;
 
-    if (!(loader_ctx = wasm_loader_ctx_init(func, error_buf, error_buf_size))) {
+    if (!(loader_ctx = wasm_loader_ctx_init(error_buf, error_buf_size))) {
         goto fail;
     }
 
@@ -1228,192 +1220,6 @@ wasm_validator_code(WASMModule *module, WASMFunction *func,
                 }
                 break;
             }
-
-#if WASM_ENABLE_REF_TYPES != 0
-            case WASM_OP_SELECT_T:
-            {
-                uint8 vec_len, ref_type;
-
-                read_leb_uint32(p, p_end, vec_len);
-                if (!vec_len) {
-                    set_error_buf(error_buf, error_buf_size,
-                                  "invalid result arity");
-                    goto fail;
-                }
-
-                CHECK_BUF(p, p_end, 1);
-                ref_type = read_uint8(p);
-                if (!is_value_type(ref_type)) {
-                    set_error_buf(error_buf, error_buf_size,
-                                  "unknown value type");
-                    goto fail;
-                }
-
-                POP_I32();
-
-#if WASM_ENABLE_FAST_INTERP != 0
-                if (loader_ctx->p_code_compiled) {
-                    uint8 opcode_tmp = WASM_OP_SELECT;
-                    uint8 *p_code_compiled_tmp =
-                        loader_ctx->p_code_compiled - 2;
-
-                    if (ref_type == VALUE_TYPE_V128) {
-#if (WASM_ENABLE_SIMD == 0) \
-    || ((WASM_ENABLE_WAMR_COMPILER == 0) && (WASM_ENABLE_JIT == 0))
-                        set_error_buf(error_buf, error_buf_size,
-                                      "SIMD v128 type isn't supported");
-                        goto fail;
-#endif
-                    }
-                    else {
-                        if (ref_type == VALUE_TYPE_F64
-                            || ref_type == VALUE_TYPE_I64)
-                            opcode_tmp = WASM_OP_SELECT_64;
-#if WASM_ENABLE_LABELS_AS_VALUES != 0
-#if WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS != 0
-                        *(void **)(p_code_compiled_tmp - sizeof(void *)) =
-                            handle_table[opcode_tmp];
-#else
-                        int32 offset = (int32)((uint8 *)handle_table[opcode_tmp]
-                                               - (uint8 *)handle_table[0]);
-                        if (!(offset >= INT16_MIN && offset < INT16_MAX)) {
-                            set_error_buf(
-                                error_buf, error_buf_size,
-                                "pre-compiled label offset out of range");
-                            goto fail;
-                        }
-                        *(int16 *)(p_code_compiled_tmp - sizeof(int16)) =
-                            (int16)offset;
-#endif /* end of WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS */
-#else  /* else of WASM_ENABLE_LABELS_AS_VALUES */
-#if WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS != 0
-                        *(p_code_compiled_tmp - 1) = opcode_tmp;
-#else
-                        *(p_code_compiled_tmp - 2) = opcode_tmp;
-#endif /* end of WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS */
-#endif /* end of WASM_ENABLE_LABELS_AS_VALUES */
-                    }
-                }
-#endif /* WASM_ENABLE_FAST_INTERP != 0 */
-
-#if WASM_ENABLE_FAST_INTERP != 0
-                POP_OFFSET_TYPE(ref_type);
-                POP_TYPE(ref_type);
-                POP_OFFSET_TYPE(ref_type);
-                POP_TYPE(ref_type);
-                PUSH_OFFSET_TYPE(ref_type);
-                PUSH_TYPE(ref_type);
-#else
-                POP2_AND_PUSH(ref_type, ref_type);
-#endif /* WASM_ENABLE_FAST_INTERP != 0 */
-
-                (void)vec_len;
-                break;
-            }
-
-            /* table.get x. tables[x]. [i32] -> [t] */
-            /* table.set x. tables[x]. [i32 t] -> [] */
-            case WASM_OP_TABLE_GET:
-            case WASM_OP_TABLE_SET:
-            {
-                uint8 decl_ref_type;
-
-                read_leb_uint32(p, p_end, table_idx);
-                if (!get_table_elem_type(module, table_idx, &decl_ref_type,
-                                         error_buf, error_buf_size))
-                    goto fail;
-
-#if WASM_ENABLE_FAST_INTERP != 0
-                emit_uint32(loader_ctx, table_idx);
-#endif
-
-                if (opcode == WASM_OP_TABLE_GET) {
-                    POP_I32();
-#if WASM_ENABLE_FAST_INTERP != 0
-                    PUSH_OFFSET_TYPE(decl_ref_type);
-#endif
-                    PUSH_TYPE(decl_ref_type);
-                }
-                else {
-#if WASM_ENABLE_FAST_INTERP != 0
-                    POP_OFFSET_TYPE(decl_ref_type);
-#endif
-                    POP_TYPE(decl_ref_type);
-                    POP_I32();
-                }
-                break;
-            }
-            case WASM_OP_REF_NULL:
-            {
-                uint8 ref_type;
-
-                CHECK_BUF(p, p_end, 1);
-                ref_type = read_uint8(p);
-                if (ref_type != VALUE_TYPE_FUNCREF
-                    && ref_type != VALUE_TYPE_EXTERNREF) {
-                    set_error_buf(error_buf, error_buf_size,
-                                  "unknown value type");
-                    goto fail;
-                }
-#if WASM_ENABLE_FAST_INTERP != 0
-                PUSH_OFFSET_TYPE(ref_type);
-#endif
-                PUSH_TYPE(ref_type);
-                break;
-            }
-            case WASM_OP_REF_IS_NULL:
-            {
-
-                if (!wasm_loader_pop_frame_ref(loader_ctx, VALUE_TYPE_FUNCREF,
-                                               error_buf, error_buf_size)
-                    && !wasm_loader_pop_frame_ref(loader_ctx,
-                                                  VALUE_TYPE_EXTERNREF,
-                                                  error_buf, error_buf_size)) {
-                    goto fail;
-                }
-                PUSH_I32();
-                break;
-            }
-            case WASM_OP_REF_FUNC:
-            {
-                read_leb_uint32(p, p_end, func_idx);
-
-                if (!check_function_index(module, func_idx, error_buf,
-                                          error_buf_size)) {
-                    goto fail;
-                }
-
-                if (func_idx == cur_func_idx + module->import_function_count) {
-                    WASMTableSeg *table_seg = module->table_segments;
-                    bool func_declared = false;
-                    uint32 j;
-
-                    /* Check whether current function is declared */
-                    for (i = 0; i < module->table_seg_count; i++, table_seg++) {
-                        if (table_seg->elem_type == VALUE_TYPE_FUNCREF
-                            && wasm_elem_is_declarative(table_seg->mode)) {
-                            for (j = 0; j < table_seg->function_count; j++) {
-                                if (table_seg->func_indexes[j] == func_idx) {
-                                    func_declared = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (!func_declared) {
-                        set_error_buf(error_buf, error_buf_size,
-                                      "undeclared function reference");
-                        goto fail;
-                    }
-                }
-
-#if WASM_ENABLE_FAST_INTERP != 0
-                emit_uint32(loader_ctx, func_idx);
-#endif
-                PUSH_FUNCREF();
-                break;
-            }
-#endif /* WASM_ENABLE_REF_TYPES */
 
             case WASM_OP_GET_LOCAL:
             {
@@ -2043,7 +1849,6 @@ wasm_validator_code(WASMModule *module, WASMFunction *func,
 
     func->branch_table = loader_ctx->branch_table_bottom;
     func->max_stack_cell_num = loader_ctx->max_stack_cell_num;
-    func->max_block_num = loader_ctx->max_csp_num;
     return true;
 
 fail:
