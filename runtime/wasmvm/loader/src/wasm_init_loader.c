@@ -1,8 +1,7 @@
 #include "wasm_loader.h"
 
 bool
-init_load(const uint8 *buf, const uint8 *buf_end,
-        WASMModule *module, char *error_buf,uint32 error_buf_size)
+init_load(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end, *section_end;
     uint8 id, flags, kind;
@@ -72,7 +71,7 @@ init_load(const uint8 *buf, const uint8 *buf_end,
                             break;
 
                         default:
-                            set_error_buf(error_buf, error_buf_size,
+                            wasm_set_exception(module,
                                   "invalid import kind");
                     }   
                 }

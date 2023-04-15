@@ -59,7 +59,6 @@ typedef struct WASMLoaderContext
 
 } WASMLoaderContext;
 
-bool wasm_validator(WASMModule *module, char *error_buf,
-                    uint32 error_buf_size);
+bool wasm_validator(WASMModule *module);
 
 #endif

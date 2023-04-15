@@ -4,35 +4,23 @@
 #include "platform.h"
 #include "wasm_type.h"
 
-//检查memory的最大大小
-bool
-check_memory_max_size(uint32 init_size, uint32 max_size, char *error_buf,
-                      uint32 error_buf_size);
-
-//检查memory的初始大小
-bool
-check_memory_init_size(uint32 init_size, char *error_buf, uint32 error_buf_size);
-
-//检查表的最大大小是否正确
-bool
-check_table_max_size(uint32 init_size, uint32 max_size, char *error_buf,
-                     uint32 error_buf_size);
-
 //检查字符串是否是utf-8编码
 bool
 check_utf8_str(const uint8 *str, uint32 len);
 
-//设置加载时的错误类型
-void
-set_error_buf(char *error_buf, uint32 error_buf_size, const char *string);
-
-//设置加载时的错误类型
-void
-set_error_buf_v(char *error_buf, uint32 error_buf_size, const char *format, ...);
-
 //检查类型是否为value
-bool
-is_value_type(uint8 type);
+static inline bool
+is_value_type(uint8 type)
+{
+    if (type == VALUE_TYPE_I32 || type == VALUE_TYPE_I64
+        || type == VALUE_TYPE_F32 || type == VALUE_TYPE_F64
+#if WASM_ENABLE_REF_TYPES != 0
+        || type == VALUE_TYPE_FUNCREF || type == VALUE_TYPE_EXTERNREF
+#endif
+    )
+        return true;
+    return false;
+}
 
 //检查两个type是否相同
 inline static bool

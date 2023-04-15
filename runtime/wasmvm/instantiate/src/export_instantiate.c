@@ -14,8 +14,7 @@ get_export_count(const WASMModule *module, uint8 kind)
 }
 
 bool 
-export_instantiate(WASMModule *module, char *error_buf,
-                             uint32 error_buf_size)
+export_instantiate(WASMModule *module)
 {
     WASMExportFuncInstance *export_func;
     WASMExport *export = module->exports;
@@ -47,6 +46,6 @@ export_instantiate(WASMModule *module, char *error_buf,
     return  true;
 fail:
     LOG_VERBOSE("Instantiate export fail.\n");
-    set_error_buf(error_buf, error_buf_size, "Instantiate export fail.\n");
+    wasm_set_exception(module, "Instantiate export fail.\n");
     return false;
 }

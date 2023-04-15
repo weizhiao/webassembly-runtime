@@ -17,10 +17,8 @@ copy_string_array(const char *array[], uint32 array_size, char **buf_ptr,
 
     /* We add +1 to generate null-terminated array of strings */
     total_size = sizeof(char *) * ((uint64)array_size + 1);
-    if (total_size >= UINT32_MAX
-        || (total_size > 0 && !(list = wasm_runtime_malloc((uint32)total_size)))
-        || buf_size >= UINT32_MAX
-        || (buf_size > 0 && !(buf = wasm_runtime_malloc((uint32)buf_size)))) {
+    if (total_size >= UINT32_MAX || (total_size > 0 && !(list = wasm_runtime_malloc((uint32)total_size))) || buf_size >= UINT32_MAX || (buf_size > 0 && !(buf = wasm_runtime_malloc((uint32)buf_size))))
+    {
 
         if (buf)
             wasm_runtime_free(buf);
@@ -29,7 +27,8 @@ copy_string_array(const char *array[], uint32 array_size, char **buf_ptr,
         return false;
     }
 
-    for (i = 0; i < array_size; i++) {
+    for (i = 0; i < array_size; i++)
+    {
         list[i] = buf + buf_offset;
         bh_strcpy_s(buf + buf_offset, (uint32)buf_size - buf_offset, array[i]);
         buf_offset += (uint32)(strlen(array[i]) + 1);
@@ -44,15 +43,14 @@ copy_string_array(const char *array[], uint32 array_size, char **buf_ptr,
     return true;
 }
 
-bool 
-wasm_runtime_wasi_init(WASMModule *module_inst,
-                       const char *dir_list[], uint32 dir_count,
-                       const char *map_dir_list[], uint32 map_dir_count,
-                       const char *env[], uint32 env_count,
-                       const char *addr_pool[], uint32 addr_pool_size,
-                       const char *ns_lookup_pool[], uint32 ns_lookup_pool_size,
-                       char *argv[], uint32 argc, int stdinfd, int stdoutfd,
-                       int stderrfd, char *error_buf, uint32 error_buf_size)
+bool wasm_runtime_wasi_init(WASMModule *module,
+                            const char *dir_list[], uint32 dir_count,
+                            const char *map_dir_list[], uint32 map_dir_count,
+                            const char *env[], uint32 env_count,
+                            const char *addr_pool[], uint32 addr_pool_size,
+                            const char *ns_lookup_pool[], uint32 ns_lookup_pool_size,
+                            char *argv[], uint32 argc, int stdinfd, int stdoutfd,
+                            int stderrfd)
 {
     WASIContext *wasi_ctx;
     char *argv_buf = NULL;
@@ -71,68 +69,74 @@ wasm_runtime_wasi_init(WASMModule *module_inst,
     bool addr_pool_inited = false;
     __wasi_fd_t wasm_fd = 3;
     int32 raw_fd;
+    char error_buf[128];
+    uint32 error_buf_size = 128;
     char *path, resolved_path[PATH_MAX];
     uint32 i;
 
-    if (!(wasi_ctx = module_inst->wasi_ctx = wasm_runtime_malloc(sizeof(WASIContext)))) {
+    if (!(wasi_ctx = module->wasi_ctx = wasm_runtime_malloc(sizeof(WASIContext))))
+    {
         return false;
     }
 
     /* process argv[0], trip the path and suffix, only keep the program name
      */
     if (!copy_string_array((const char **)argv, argc, &argv_buf, &argv_list,
-                           &argv_buf_size)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: allocate memory failed");
+                           &argv_buf_size))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: allocate memory failed");
         goto fail;
     }
 
     if (!copy_string_array(env, env_count, &env_buf, &env_list,
-                           &env_buf_size)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: allocate memory failed");
+                           &env_buf_size))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: allocate memory failed");
         goto fail;
     }
 
-    if (!(curfds = wasm_runtime_malloc(sizeof(struct fd_table)))
-        || !(prestats = wasm_runtime_malloc(sizeof(struct fd_prestats)))
-        || !(argv_environ =
-                 wasm_runtime_malloc(sizeof(struct argv_environ_values)))
-        || !(apool = wasm_runtime_malloc(sizeof(struct addr_pool)))) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: allocate memory failed");
+    if (!(curfds = wasm_runtime_malloc(sizeof(struct fd_table))) || !(prestats = wasm_runtime_malloc(sizeof(struct fd_prestats))) || !(argv_environ = wasm_runtime_malloc(sizeof(struct argv_environ_values))) || !(apool = wasm_runtime_malloc(sizeof(struct addr_pool))))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: allocate memory failed");
         goto fail;
     }
 
-    if (!fd_table_init(curfds)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: "
-                      "init fd table failed");
+    if (!fd_table_init(curfds))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: "
+                           "init fd table failed");
         goto fail;
     }
     fd_table_inited = true;
 
-    if (!fd_prestats_init(prestats)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: "
-                      "init fd prestats failed");
+    if (!fd_prestats_init(prestats))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: "
+                           "init fd prestats failed");
         goto fail;
     }
     fd_prestats_inited = true;
 
     if (!argv_environ_init(argv_environ, argv_buf, argv_buf_size, argv_list,
-                           argc, env_buf, env_buf_size, env_list, env_count)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: "
-                      "init argument environment failed");
+                           argc, env_buf, env_buf_size, env_list, env_count))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: "
+                           "init argument environment failed");
         goto fail;
     }
     argv_environ_inited = true;
 
-    if (!addr_pool_init(apool)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: "
-                      "init the address pool failed");
+    if (!addr_pool_init(apool))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: "
+                           "init the address pool failed");
         goto fail;
     }
     addr_pool_inited = true;
@@ -142,32 +146,35 @@ wasm_runtime_wasi_init(WASMModule *module_inst,
      * If -1 is given, use STDIN_FILENO (0), STDOUT_FILENO (1),
      * STDERR_FILENO (2) respectively.
      */
-    if (!fd_table_insert_existing(curfds, 0, (stdinfd != -1) ? stdinfd : 0)
-        || !fd_table_insert_existing(curfds, 1, (stdoutfd != -1) ? stdoutfd : 1)
-        || !fd_table_insert_existing(curfds, 2,
-                                     (stderrfd != -1) ? stderrfd : 2)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: init fd table failed");
+    if (!fd_table_insert_existing(curfds, 0, (stdinfd != -1) ? stdinfd : 0) || !fd_table_insert_existing(curfds, 1, (stdoutfd != -1) ? stdoutfd : 1) || !fd_table_insert_existing(curfds, 2, (stderrfd != -1) ? stderrfd : 2))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: init fd table failed");
         goto fail;
     }
 
     wasm_fd = 3;
-    for (i = 0; i < dir_count; i++, wasm_fd++) {
+    for (i = 0; i < dir_count; i++, wasm_fd++)
+    {
         path = realpath(dir_list[i], resolved_path);
-        if (!path) {
-            if (error_buf)
-                snprintf(error_buf, error_buf_size,
-                         "error while pre-opening directory %s: %d\n",
-                         dir_list[i], errno);
+        if (!path)
+        {
+            snprintf(error_buf, error_buf_size,
+                     "error while pre-opening directory %s: %d\n",
+                     dir_list[i], errno);
+            wasm_set_exception(module, error_buf);
+
             goto fail;
         }
 
         raw_fd = open(path, O_RDONLY | O_DIRECTORY, 0);
-        if (raw_fd == -1) {
-            if (error_buf)
-                snprintf(error_buf, error_buf_size,
-                         "error while pre-opening directory %s: %d\n",
-                         dir_list[i], errno);
+        if (raw_fd == -1)
+        {
+            snprintf(error_buf, error_buf_size,
+                     "error while pre-opening directory %s: %d\n",
+                     dir_list[i], errno);
+            wasm_set_exception(module, error_buf);
+
             goto fail;
         }
 
@@ -176,14 +183,16 @@ wasm_runtime_wasi_init(WASMModule *module_inst,
     }
 
     /* addr_pool(textual) -> apool */
-    for (i = 0; i < addr_pool_size; i++) {
+    for (i = 0; i < addr_pool_size; i++)
+    {
         char *cp, *address, *mask;
         bool ret = false;
 
         cp = strdup(addr_pool[i]);
-        if (!cp) {
-            set_error_buf(error_buf, error_buf_size,
-                          "Init wasi environment failed: copy address failed");
+        if (!cp)
+        {
+            wasm_set_exception(module,
+                               "Init wasi environment failed: copy address failed");
             goto fail;
         }
 
@@ -192,17 +201,19 @@ wasm_runtime_wasi_init(WASMModule *module_inst,
 
         ret = addr_pool_insert(apool, address, (uint8)(mask ? atoi(mask) : 0));
         wasm_runtime_free(cp);
-        if (!ret) {
-            set_error_buf(error_buf, error_buf_size,
-                          "Init wasi environment failed: store address failed");
+        if (!ret)
+        {
+            wasm_set_exception(module,
+                               "Init wasi environment failed: store address failed");
             goto fail;
         }
     }
 
     if (!copy_string_array(ns_lookup_pool, ns_lookup_pool_size, &ns_lookup_buf,
-                           &ns_lookup_list, NULL)) {
-        set_error_buf(error_buf, error_buf_size,
-                      "Init wasi environment failed: allocate memory failed");
+                           &ns_lookup_list, NULL))
+    {
+        wasm_set_exception(module,
+                           "Init wasi environment failed: allocate memory failed");
         goto fail;
     }
 
@@ -251,16 +262,16 @@ fail:
     return false;
 }
 
-bool
-wasm_runtime_init_env()
+bool wasm_runtime_init_env()
 {
     if (platform_init() != 0)
         goto fail;
 
-    if (wasm_native_init() == false) {
+    if (wasm_native_init() == false)
+    {
         goto fail;
     }
-    
+
     return true;
 
 fail:

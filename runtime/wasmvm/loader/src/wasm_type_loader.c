@@ -1,8 +1,7 @@
 #include "wasm_loader.h"
 
 bool
-load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
-                  char *error_buf, uint32 error_buf_size)
+load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     uint32 type_count, param_count, result_count, i, j;
@@ -28,7 +27,7 @@ load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
         for (i = 0; i < type_count; i++) {
             flag = read_uint8(p);
             if (flag != 0x60) {
-                set_error_buf(error_buf, error_buf_size, "invalid type flag");
+                wasm_set_exception(module, "invalid type flag");
                 return false;
             }
 
@@ -52,7 +51,7 @@ load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
 
             for (j = 0; j < param_count; j++) {
                 if (!is_value_type(type->param[j])) {
-                    set_error_buf(error_buf, error_buf_size,
+                    wasm_set_exception(module,
                                   "unknown param value type");
                     return false;
                 }
@@ -60,7 +59,7 @@ load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
 
             for (j = 0; j < result_count; j++){
                 if (!is_value_type(type->result[j])) {
-                    set_error_buf(error_buf, error_buf_size,
+                    wasm_set_exception(module,
                                   "unknown result value type");
                     return false;
                 }
@@ -69,7 +68,7 @@ load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
             param_cell_num = wasm_get_cell_num(type->param, param_count);
             ret_cell_num = wasm_get_cell_num(type->result, result_count);
             if (param_cell_num > UINT16_MAX || ret_cell_num > UINT16_MAX) {
-                set_error_buf(error_buf, error_buf_size,
+                wasm_set_exception(module,
                               "param count or result count too large");
                 return false;
             }
@@ -80,7 +79,7 @@ load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
             for (j = 0; j < i; j++) {
                 if (wasm_type_equal(type, types[j])) {
                     if (types[j]->ref_count == UINT16_MAX) {
-                        set_error_buf(error_buf, error_buf_size,
+                        wasm_set_exception(module,
                                       "wasm type's ref count too large");
                         return false;
                     }
@@ -98,7 +97,7 @@ load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
     }
 
     if (p != p_end) {
-        set_error_buf(error_buf, error_buf_size, "section size mismatch");
+        wasm_set_exception(module, "section size mismatch");
         return false;
     }
 

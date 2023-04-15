@@ -1,8 +1,7 @@
 #include "wasm_loader.h"
 
 bool
-load_code_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
-                    char *error_buf, uint32 error_buf_size)
+load_code_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     const uint8 *code_end, *p_org;
@@ -18,7 +17,7 @@ load_code_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
     read_leb_uint32(p, p_end, count);
     
     if(module->function_count != count){
-        set_error_buf(error_buf, error_buf_size, "code size mismatch");
+        wasm_set_exception(module, "code size mismatch");
         return false;
     }
 
@@ -53,7 +52,7 @@ load_code_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
             total_size = local_count;
 
             if(total_size > 0 && !(local_types = wasm_runtime_malloc(total_size))){
-                set_error_buf(error_buf, error_buf_size, "malloc error");
+                wasm_set_exception(module, "malloc error");
                 goto fail;
             }
 
@@ -71,7 +70,7 @@ load_code_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
             total_size = (param_count + local_count) * sizeof(uint16);
 
             if(total_size > 0 && !(local_offsets = wasm_runtime_malloc(total_size))){
-                set_error_buf(error_buf, error_buf_size, "malloc error");
+                wasm_set_exception(module, "malloc error");
                 goto fail;
             }
 
@@ -98,7 +97,7 @@ load_code_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
     }
 
     if (p != p_end) {
-        set_error_buf(error_buf, error_buf_size, "section size mismatch");
+        wasm_set_exception(module, "section size mismatch");
         return false;
     }
 

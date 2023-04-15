@@ -2,8 +2,7 @@
 #include "wasm_runtime_instantiate_api.h"
 
 bool
-wasm_instantiate(WASMModule *module, uint32 value_stack_size, uint32 execution_stack_size
-                , char *error_buf, uint32 error_buf_size)
+wasm_instantiate(WASMModule *module, uint32 value_stack_size, uint32 execution_stack_size)
 {
     if (!module)
         return false;
@@ -11,11 +10,11 @@ wasm_instantiate(WASMModule *module, uint32 value_stack_size, uint32 execution_s
     module->module_type = Wasm_Module_Bytecode;
 
     /* Instantiate memories/tables/functions */
-    if (!globals_instantiate(module, error_buf,error_buf_size)
-        || !(memories_instantiate(module, error_buf, error_buf_size))
-        || !(tables_instantiate(module, error_buf, error_buf_size))
-        || !(export_instantiate(module, error_buf, error_buf_size))
-        || !(functions_instantiate(module, error_buf, error_buf_size))
+    if (!globals_instantiate(module)
+        || !memories_instantiate(module)
+        || !tables_instantiate(module)
+        || !export_instantiate(module)
+        || !functions_instantiate(module)
         )
     {
         goto fail;

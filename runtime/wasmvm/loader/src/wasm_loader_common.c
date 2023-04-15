@@ -1,9 +1,8 @@
 #include "wasm_loader_common.h"
 
 bool
-load_init_expr(const uint8 **p_buf, const uint8 *buf_end,
-               InitializerExpression *init_expr, uint8 type, char *error_buf,
-               uint32 error_buf_size)
+load_init_expr(WASMModule *module, const uint8 **p_buf, const uint8 *buf_end,
+               InitializerExpression *init_expr, uint8 type)
 {
     const uint8 *p = *p_buf, *p_end = buf_end;
     uint8 flag, end_byte, *p_float;
@@ -47,8 +46,7 @@ load_init_expr(const uint8 **p_buf, const uint8 *buf_end,
             break;
         default:
         {
-            set_error_buf(error_buf, error_buf_size,
-                          "illegal opcode "
+            wasm_set_exception(module, "illegal opcode "
                           "or constant expression required "
                           "or type mismatch");
             goto fail;
@@ -61,19 +59,17 @@ load_init_expr(const uint8 **p_buf, const uint8 *buf_end,
     return true;
 
 fail_type_mismatch:
-    set_error_buf(error_buf, error_buf_size,
-                  "type mismatch or constant expression required");
+    wasm_set_exception(module, "type mismatch or constant expression required");
 fail:
     return false;
 }
 
 bool
-load_utf8_str(const uint8 **p_buf, uint32 len, char**str, 
-                char *error_buf, uint32 error_buf_size)
+load_utf8_str(WASMModule *module, const uint8 **p_buf, uint32 len, char**str)
 {
     uint8* p = (uint8*)*p_buf;
     if (!check_utf8_str(p, len)) {
-        set_error_buf(error_buf, error_buf_size, "invalid UTF-8 encoding");
+        wasm_set_exception(module, "invalid UTF-8 encoding");
         *str = NULL;
         return false;
     }

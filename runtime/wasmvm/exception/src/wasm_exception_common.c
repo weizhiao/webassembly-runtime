@@ -1,24 +1,23 @@
 #include "wasm_exception.h"
 
 const char *
-wasm_get_exception(WASMModuleInstance *module_inst)
+wasm_get_exception(WASMModule *module)
 {
-    if (module_inst->cur_exception[0] == '\0')
+    if (module->cur_exception[0] == '\0')
         return NULL;
     else
-        return module_inst->cur_exception;
+        return module->cur_exception;
 }
 
 void
-wasm_set_exception(WASMModuleInstance *module_inst, const char *exception)
+wasm_set_exception(WASMModule *module, const char *exception)
 {
-
     if (exception) {
-        snprintf(module_inst->cur_exception, sizeof(module_inst->cur_exception),
+        snprintf(module->cur_exception, sizeof(module->cur_exception),
                  "Exception: %s", exception);
     }
     else {
-        module_inst->cur_exception[0] = '\0';
+        module->cur_exception[0] = '\0';
     }
 
 }

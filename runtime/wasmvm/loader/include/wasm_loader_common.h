@@ -3,7 +3,9 @@
 
 #include "wasm_type.h"
 #include "runtime_utils.h"
+#include "wasm_leb_validator.h"
 #include "wasm_memory.h"
+#include "wasm_exception.h"
 
 /// @brief 加载初始化表达式
 /// @param p_buf 
@@ -14,9 +16,8 @@
 /// @param error_buf_size 
 /// @return 
 bool
-load_init_expr(const uint8 **p_buf, const uint8 *buf_end,
-               InitializerExpression *init_expr, uint8 type, char *error_buf,
-               uint32 error_buf_size);
+load_init_expr(WASMModule *module, const uint8 **p_buf, const uint8 *buf_end,
+               InitializerExpression *init_expr, uint8 type);
 
 
 /// @brief 加载字符串
@@ -27,10 +28,7 @@ load_init_expr(const uint8 **p_buf, const uint8 *buf_end,
 /// @param error_buf_size 
 /// @return 
 bool
-load_utf8_str(const uint8 **p_buf, uint32 len, char**str, 
-                char *error_buf, uint32 error_buf_size);
-
-
+load_utf8_str(WASMModule *module, const uint8 **p_buf, uint32 len, char**str);
 
 
 #endif

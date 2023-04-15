@@ -17,6 +17,6 @@ wasm_runtime_wasi_init(WASMModule *module_inst,
                        const char *addr_pool[], uint32 addr_pool_size,
                        const char *ns_lookup_pool[], uint32 ns_lookup_pool_size,
                        char *argv[], uint32 argc, int stdinfd, int stdoutfd,
-                       int stderrfd, char *error_buf, uint32 error_buf_size);
+                       int stderrfd);
 
 #endif

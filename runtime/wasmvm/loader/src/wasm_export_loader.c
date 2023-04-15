@@ -1,8 +1,7 @@
 #include "wasm_loader.h"
 
 bool
-load_export_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
-                    char *error_buf, uint32 error_buf_size)
+load_export_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     uint32 export_count, i, index;
@@ -15,7 +14,6 @@ load_export_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
     if (export_count) {
         total_size = sizeof(WASMExport) * (uint64)export_count;
         if (!(exports = wasm_runtime_malloc(total_size))) {
-            set_error_buf(error_buf, error_buf_size, "malloc error");
             return false;
         }
 
@@ -23,9 +21,7 @@ load_export_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
         for (i = 0; i < export_count; i++, export++) {
             read_leb_uint32(p, p_end, str_len);
 
-            if (!load_utf8_str(
-                      &p, str_len, &export->name, error_buf,
-                      error_buf_size)) {
+            if (!load_utf8_str(module, &p, str_len, &export->name)) {
                 return false;
             }
             export->kind = read_uint8(p);
@@ -38,7 +34,7 @@ load_export_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
     }
 
     if (p != p_end) {
-        set_error_buf(error_buf, error_buf_size, "section size mismatch");
+        wasm_set_exception(module, "section size mismatch");
         return false;
     }
 

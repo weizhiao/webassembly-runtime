@@ -22,7 +22,7 @@ wasm_module_destory(WASMModule *module, Stage stage);
 
 //创建module
 WASMModule *
-create_module(char *error_buf, uint32 error_buf_size);
+create_module();
 
 bool
 wasm_runtime_validate_native_addr(WASMModule *module_inst_comm,

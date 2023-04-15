@@ -134,7 +134,7 @@ static volatile VoidFuncPtr invokeNative_Void =
 uint32
 get_libc_wasi_export_apis(NativeSymbol **p_libc_wasi_apis);
 
-bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func, uint32 *argv, uint32 argc,
+bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func, uint32 *argv,
                                 uint32 *argv_ret)
 {
     WASMModule *module = exec_env->module_inst;

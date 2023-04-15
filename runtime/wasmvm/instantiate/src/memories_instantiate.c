@@ -1,7 +1,7 @@
 #include "instantiate.h"
 
 bool
-memory_instantiate(WASMMemory *memory, char *error_buf, uint32 error_buf_size)
+memory_instantiate(WASMMemory *memory)
 {
     uint32 num_bytes_per_page, init_page_count, max_page_count;
     uint64 memory_data_size;
@@ -11,7 +11,7 @@ memory_instantiate(WASMMemory *memory, char *error_buf, uint32 error_buf_size)
     num_bytes_per_page = memory->num_bytes_per_page;
     init_page_count = memory->cur_page_count;
 
-    if(max_page_count == -1){
+    if(max_page_count == (uint32)-1){
         max_page_count = DEFAULT_MAX_PAGES;
         memory->max_page_count = max_page_count;
     }
@@ -33,7 +33,7 @@ fail:
 }
 
 bool
-memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
+memories_instantiate(WASMModule *module)
 {
     uint32 i, base_offset, length,
            memory_count = module->import_memory_count + module->memory_count;
@@ -45,7 +45,7 @@ memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
     memory = memories = module->memories;
 
     for (i = 0; i < memory_count; i++, memory++) {
-            if (!(memory_instantiate(memory, error_buf, error_buf_size))) {
+            if (!memory_instantiate(memory)) {
                 //memories_deinstantiate(memory, memory_count);
                 goto fail;
             }
@@ -68,7 +68,7 @@ memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
             if (!globals
                 || globals[data_seg->base_offset.u.global_index].type
                        != VALUE_TYPE_I32) {
-                set_error_buf(error_buf, error_buf_size,
+                wasm_set_exception(module,
                               "data segment does not fit");
                 goto fail;
             }
@@ -84,7 +84,7 @@ memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
         if (base_offset > memory_size) {
             LOG_DEBUG("base_offset(%d) > memory_size(%d)", base_offset,
                       memory_size);
-            set_error_buf(error_buf, error_buf_size,
+            wasm_set_exception(module,
                           "data segment does not fit");
             goto fail;
         }
@@ -94,7 +94,7 @@ memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
         if (base_offset + length > memory_size) {
             LOG_DEBUG("base_offset(%d) + length(%d) > memory_size(%d)",
                       base_offset, length, memory_size);
-            set_error_buf(error_buf, error_buf_size,
+            wasm_set_exception(module,
                           "data segment does not fit");
             goto fail;
         }
@@ -108,6 +108,6 @@ memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
     return true;
 fail:
     LOG_VERBOSE("Instantiate memory fail.\n");
-    set_error_buf(error_buf, error_buf_size, "Instantiate memory fail.\n");
+    wasm_set_exception(module, "Instantiate memory fail.\n");
     return false;
 }

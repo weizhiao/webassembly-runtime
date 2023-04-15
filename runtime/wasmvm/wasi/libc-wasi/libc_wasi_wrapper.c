@@ -66,6 +66,7 @@ wasi_ctx_get_curfds(wasm_module_inst_t module_inst, wasi_ctx_t wasi_ctx)
 {
     if (!wasi_ctx)
         return NULL;
+    (void)module_inst;
     return wasi_ctx->curfds;
 }
 

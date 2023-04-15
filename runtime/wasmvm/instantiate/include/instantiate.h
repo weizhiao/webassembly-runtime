@@ -5,27 +5,22 @@
 
 //实例化全局变量
 bool
-globals_instantiate(WASMModule *module,
-                    char *error_buf, uint32 error_buf_size);
+globals_instantiate(WASMModule *module);
 
 //实例化内存
 bool
-memories_instantiate(WASMModule *module,
-                    char *error_buf, uint32 error_buf_size);
+memories_instantiate(WASMModule *module);
 
 //实例化表
 bool
-tables_instantiate(WASMModule *module, char *error_buf,
-                   uint32 error_buf_size);
+tables_instantiate(WASMModule *module);
 
 //实例化导出
 bool 
-export_instantiate(WASMModule *module, char *error_buf,
-                             uint32 error_buf_size);
+export_instantiate(WASMModule *module);
 
 //实例化函数
 bool
-functions_instantiate(WASMModule *module,
-                    char *error_buf, uint32 error_buf_size);
+functions_instantiate(WASMModule *module);
 
 #endif

@@ -373,15 +373,6 @@ typedef struct WASMModule {
 
 }WASMModule,WASMModuleInstance;
 
-/* Execution environment, e.g. stack info */
-/**
- * Align an unsigned value on a alignment boundary.
- *
- * @param v the value to be aligned
- * @param b the alignment boundary (2, 4, 8, ...)
- *
- * @return the aligned value
- */
 inline static unsigned
 align_uint(unsigned v, unsigned b)
 {

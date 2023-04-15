@@ -2,8 +2,7 @@
 #include "wasm_native.h"
 
 bool
-functions_instantiate(WASMModule *module,
-                    char *error_buf, uint32 error_buf_size)
+functions_instantiate(WASMModule *module)
 {
     uint32 i, import_function_count, sum_function_count;
     WASMFunction *func;
@@ -38,6 +37,6 @@ functions_instantiate(WASMModule *module,
     return true;
 fail:
     LOG_VERBOSE("Instantiate function fail.\n");
-    set_error_buf(error_buf, error_buf_size, "Instantiate function fail.\n");
+    wasm_set_exception(module, "Instantiate function fail.\n");
     return false;
 }

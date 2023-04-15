@@ -280,7 +280,7 @@ wasm_module_destory(WASMModule *module, Stage stage)
 }
 
 WASMModule *
-create_module(char *error_buf, uint32 error_buf_size)
+create_module()
 {
     WASMModule *module = wasm_runtime_malloc(sizeof(WASMModule));
 
@@ -297,7 +297,7 @@ create_module(char *error_buf, uint32 error_buf_size)
 }
 
 bool
-wasm_runtime_get_app_addr_range(WASMModuleInstance *module_inst_comm,
+wasm_runtime_get_app_addr_range(WASMModule *module_inst_comm,
                                 uint32 app_offset, uint32 *p_app_start_offset,
                                 uint32 *p_app_end_offset)
 {

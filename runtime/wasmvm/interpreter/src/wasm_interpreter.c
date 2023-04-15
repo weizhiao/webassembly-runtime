@@ -718,15 +718,14 @@ FREE_FRAME(WASMExecEnv *exec_env, WASMFuncFrame *frame)
  } while(0)
 
 static void
-wasm_interp_call_func_native(WASMModule *module_inst,
-                             WASMExecEnv *exec_env,
+wasm_interp_call_func_native(WASMExecEnv *exec_env,
                              WASMFunction *cur_func,
                              WASMFuncFrame *prev_frame)
 {
     WASMFunction *func_import = cur_func;
     WASMFuncFrame *frame;
     uint32 argv_ret[2];
-    bool ret;
+    bool ret = false;
 
     if (!(frame = ALLOC_FRAME(exec_env, prev_frame)))
         return;
@@ -739,8 +738,7 @@ wasm_interp_call_func_native(WASMModule *module_inst,
     {
     case Native_Func:
         ret = wasm_runtime_invoke_native(
-            exec_env, func_import, frame->lp,
-            cur_func->param_cell_num, argv_ret);
+            exec_env, func_import, frame->lp, argv_ret);
         break;
     case External_Func:
         break;
@@ -2612,7 +2610,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
         
 
         if (cur_func->func_kind) {
-                wasm_interp_call_func_native(module, exec_env, cur_func,
+                wasm_interp_call_func_native(exec_env, cur_func,
                                              prev_frame);
 
             //在该情况下只有这些变量发生变化
@@ -2727,7 +2725,7 @@ wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
                                            frame);
         break;
     case Native_Func:
-        wasm_interp_call_func_native(module_inst, exec_env, function,
+        wasm_interp_call_func_native(exec_env, function,
                                          frame);
         break;
     default:

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "wasm_runtime_api.h"
+#include "wasm_exception.h"
 
 static int app_argc;
 static char **app_argv;
@@ -153,7 +154,7 @@ int main(int argc, char *argv[])
     uint32 ns_lookup_pool_size = 0;
     unsigned ret_size;
     bool is_repl_mode = false;
-    int log_verbose_level = 2;
+    int log_verbose_level = 4;
     char *wasm_file = NULL;
     uint32 value_stack_size = 64 * 1024;
     uint32 exectution_stack_size = 1024;
@@ -267,18 +268,17 @@ int main(int argc, char *argv[])
         goto fail;
     }
 
-    char error_buf[128] = {0};
-    WASMModule *module = wasm_loader(file_buf, ret_size, error_buf, 128);
+    WASMModule *module = wasm_loader(file_buf, ret_size);
     if (!module)
     {
         goto fail;
     }
-    if (!wasm_validator(module, error_buf, 128))
+    if (!wasm_validator(module))
     {
         goto fail;
     }
 
-    if (!wasm_instantiate(module, value_stack_size, exectution_stack_size, error_buf, 128))
+    if (!wasm_instantiate(module, value_stack_size, exectution_stack_size))
     {
         goto fail;
     }
@@ -290,7 +290,7 @@ int main(int argc, char *argv[])
             env_list, env_list_size,
             addr_pool, addr_pool_size,
             ns_lookup_pool, ns_lookup_pool_size, argv,
-            argc, -1, -1, -1, error_buf, 128))
+            argc, -1, -1, -1))
     {
         goto fail;
     }
@@ -305,6 +305,6 @@ int main(int argc, char *argv[])
     }
 
 fail:
-    os_printf("%s", error_buf);
+    os_printf("%s", wasm_get_exception(module));
     return 0;
 }

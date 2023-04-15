@@ -1,8 +1,7 @@
 #include "wasm_loader.h"
 
 bool
-load_table_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
-                   char *error_buf, uint32 error_buf_size)
+load_table_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     uint32 table_count, i;
@@ -35,7 +34,7 @@ load_table_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
     }
 
     if (p != p_end) {
-        set_error_buf(error_buf, error_buf_size, "section size mismatch");
+        wasm_set_exception(module, "section size mismatch");
         return false;
     }
 

@@ -1,8 +1,7 @@
 #include "wasm_loader.h"
 
 static bool
-load_global_import(const uint8 **p_buf, const uint8 *buf_end, WASMGlobalImport *global, char *error_buf,
-                   uint32 error_buf_size)
+load_global_import(WASMModule *module, const uint8 **p_buf, const uint8 *buf_end, WASMGlobalImport *global)
 {
     const uint8 *p = *p_buf, *p_end = buf_end;
     uint8 type;
@@ -22,8 +21,7 @@ fail:
 }
 
 static bool
-load_memory_import(const uint8 **p_buf, const uint8 *buf_end, WASMMemoryImport *memory,
-                   char *error_buf, uint32 error_buf_size)
+load_memory_import(WASMModule *module, const uint8 **p_buf, const uint8 *buf_end, WASMMemoryImport *memory)
 {
     const uint8 *p = *p_buf, *p_end = buf_end;
     uint32 flag = 0;
@@ -51,11 +49,10 @@ fail:
 }
 
 static bool
-load_function_import(const uint8 **p_buf, const uint8 *buf_end,
+load_function_import(WASMModule *module, const uint8 **p_buf, const uint8 *buf_end,
                      const WASMModule *parent_module,
                      const char *sub_module_name, const char *function_name,
-                     WASMFunctionImport *function, char *error_buf,
-                     uint32 error_buf_size)
+                     WASMFunctionImport *function)
 {
     const uint8 *p = *p_buf, *p_end = buf_end;
     uint32 type_index = 0;
@@ -63,7 +60,7 @@ load_function_import(const uint8 **p_buf, const uint8 *buf_end,
 
     read_leb_uint32(p, p_end, type_index);
     if (type_index >= parent_module->type_count) {
-        set_error_buf(error_buf, error_buf_size, "unknown type");
+        wasm_set_exception(module, "unknown type");
         return false;
     }
 
@@ -87,8 +84,7 @@ fail:
 }
 
 static bool
-load_table_import(const uint8 **p_buf, const uint8 *buf_end, WASMTableImport *table,
-                  char *error_buf, uint32 error_buf_size)
+load_table_import(WASMModule *module, const uint8 **p_buf, const uint8 *buf_end, WASMTableImport *table)
 {
     const uint8 *p = *p_buf, *p_end = buf_end;
     uint32 elem_type = 0, flag = 0,
@@ -118,8 +114,7 @@ fail:
 }
 
 bool
-load_import_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
-                    char *error_buf, uint32 error_buf_size)
+load_import_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     uint32 import_count, name_len, i;
@@ -137,15 +132,13 @@ load_import_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
         for (i = 0; i < import_count; i++) {
             /* 加载 module name */
             read_leb_uint32(p, p_end, name_len);
-            if (!load_utf8_str(
-                &p, name_len, &sub_module_name, error_buf, error_buf_size)) {
+            if (!load_utf8_str(module, &p, name_len, &sub_module_name)) {
                 goto fail;
             }
 
             /* 加载 field name */
             read_leb_uint32(p, p_end, name_len);
-            if (!load_utf8_str(
-                &p, name_len, &field_name, error_buf, error_buf_size)) {
+            if (!load_utf8_str(module, &p, name_len, &field_name)) {
                 goto fail;
             }
 
@@ -153,17 +146,16 @@ load_import_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
 
             switch (kind) {
                 case IMPORT_KIND_FUNC: /* import function */
-                    if (!load_function_import(
+                    if (!load_function_import(module,
                             &p, p_end, module, sub_module_name, field_name,
-                            import_functions, error_buf, error_buf_size)) {
+                            import_functions)) {
                         goto fail;
                     }
                     import_functions++;
                     break;
 
                 case IMPORT_KIND_TABLE: /* import table */
-                    if (!load_table_import(&p, p_end, import_tables,
-                                           error_buf, error_buf_size)) {
+                    if (!load_table_import(module, &p, p_end, import_tables)) {
                         LOG_DEBUG("can not import such a table (%s,%s)",
                                   sub_module_name, field_name);
                         goto fail;
@@ -172,31 +164,28 @@ load_import_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module,
                     break;
 
                 case IMPORT_KIND_MEMORY: /* import memory */
-                    if (!load_memory_import(&p, p_end, import_memories,
-                                            error_buf, error_buf_size)) {
+                    if (!load_memory_import(module, &p, p_end, import_memories)) {
                         goto fail;
                     }
                     import_memories++;
                     break;
 
                 case IMPORT_KIND_GLOBAL: /* import global */
-                    if (!load_global_import(&p, p_end,import_globals,
-                                            error_buf, error_buf_size)) {
+                    if (!load_global_import(module, &p, p_end,import_globals)) {
                         goto fail;
                     }
                     import_globals++;
                     break;
 
                 default:
-                    set_error_buf(error_buf, error_buf_size,
-                                  "invalid import kind");
+                    wasm_set_exception(module, "invalid import kind");
                     goto fail;
             }
         }
     }
 
     if (p != p_end) {
-        set_error_buf(error_buf, error_buf_size, "section size mismatch");
+        wasm_set_exception(module, "section size mismatch");
         goto fail;
     }
 

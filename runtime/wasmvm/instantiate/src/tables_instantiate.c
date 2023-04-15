@@ -1,8 +1,7 @@
 #include "instantiate.h"
 
 bool
-tables_instantiate(WASMModule *module,
-                   char *error_buf, uint32 error_buf_size)
+tables_instantiate(WASMModule *module)
 {
     uint32 i, length, default_max_size, cur_size, max_size;
     uint32 table_count = module->import_table_count + module->table_count;
@@ -23,7 +22,7 @@ tables_instantiate(WASMModule *module,
         default_max_size = cur_size * 2 > TABLE_MAX_SIZE ? 
                             cur_size * 2 : TABLE_MAX_SIZE;
 
-        if (max_size == -1) {
+        if (max_size == (uint32)-1) {
             max_size = default_max_size;
         }
         else {
@@ -63,7 +62,7 @@ tables_instantiate(WASMModule *module,
         if ((uint32)element->base_offset.u.i32 > table->cur_size) {
             LOG_DEBUG("base_offset(%d) > table->cur_size(%d)",
                       element->base_offset.u.i32, table->cur_size);
-            set_error_buf(error_buf, error_buf_size,
+            wasm_set_exception(module,
                           "elements segment does not fit");
             goto fail;
         }
@@ -72,7 +71,7 @@ tables_instantiate(WASMModule *module,
         if ((uint32)element->base_offset.u.i32 + length > table->cur_size) {
             LOG_DEBUG("base_offset(%d) + length(%d)> table->cur_size(%d)",
                       element->base_offset.u.i32, length, table->cur_size);
-            set_error_buf(error_buf, error_buf_size,
+            wasm_set_exception(module,
                           "elements segment does not fit");
             goto fail;
         }
@@ -88,7 +87,7 @@ tables_instantiate(WASMModule *module,
     return true;
 fail:
     LOG_VERBOSE("Instantiate table fail.\n");
-    set_error_buf(error_buf, error_buf_size, "Instantiate table fail.\n");
+    wasm_set_exception(module, "Instantiate table fail.\n");
     return false;
 
 }
