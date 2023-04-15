@@ -68,12 +68,14 @@ split_string(char *str, int *count)
     int idx = 0;
 
     /* split string and append tokens to 'res' */
-    do {
+    do
+    {
         p = strtok(str, " ");
         str = NULL;
         res1 = res;
         res = (char **)realloc(res1, sizeof(char *) * (uint32)(idx + 1));
-        if (res == NULL) {
+        if (res == NULL)
+        {
             free(res1);
             return NULL;
         }
@@ -86,12 +88,14 @@ split_string(char *str, int *count)
      * func\name -> func name
      */
     p = strchr(res[0], '\\');
-    while (p) {
+    while (p)
+    {
         *p = ' ';
         p = strchr(p, '\\');
     }
 
-    if (count) {
+    if (count)
+    {
         *count = idx - 1;
     }
     return res;
@@ -105,26 +109,30 @@ app_instance_repl(WASMModuleInstance *module_inst)
     ssize_t n;
 
     while ((printf("webassembly> "), fflush(stdout),
-            n = getline(&cmd, &len, stdin))
-           != -1) {
-        if (cmd[n - 1] == '\n') {
+            n = getline(&cmd, &len, stdin)) != -1)
+    {
+        if (cmd[n - 1] == '\n')
+        {
             if (n == 1)
                 continue;
             else
                 cmd[n - 1] = '\0';
         }
-        if (!strcmp(cmd, "__exit__")) {
+        if (!strcmp(cmd, "__exit__"))
+        {
             printf("exit repl mode\n");
             break;
         }
         app_argv = split_string(cmd, &app_argc);
-        if (app_argv == NULL) {
+        if (app_argv == NULL)
+        {
             LOG_ERROR("Wasm prepare param failed: split string failed.\n");
             break;
         }
-        if (app_argc != 0) {
+        if (app_argc != 0)
+        {
             execute_func(module_inst, app_argv[0],
-                                          app_argc - 1, app_argv + 1);
+                         app_argc - 1, app_argv + 1);
         }
         free(app_argv);
     }
@@ -132,15 +140,16 @@ app_instance_repl(WASMModuleInstance *module_inst)
     return NULL;
 }
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[])
+{
     wasm_runtime_init_env();
-    const char *dir_list[8] = { NULL };
+    const char *dir_list[8] = {NULL};
     uint32 dir_list_size = 0;
-    const char *env_list[8] = { NULL };
+    const char *env_list[8] = {NULL};
     uint32 env_list_size = 0;
-    const char *addr_pool[8] = { NULL };
+    const char *addr_pool[8] = {NULL};
     uint32 addr_pool_size = 0;
-    const char *ns_lookup_pool[8] = { NULL };
+    const char *ns_lookup_pool[8] = {NULL};
     uint32 ns_lookup_pool_size = 0;
     unsigned ret_size;
     bool is_repl_mode = false;
@@ -148,58 +157,67 @@ int main(int argc, char *argv[]){
     char *wasm_file = NULL;
     uint32 value_stack_size = 64 * 1024;
     uint32 exectution_stack_size = 1024;
-    for (argc--, argv++; argc > 0 && argv[0][0] == '-'; argc--, argv++) {
-        if (!strncmp(argv[0], "-v=", 3)) {
+    for (argc--, argv++; argc > 0 && argv[0][0] == '-'; argc--, argv++)
+    {
+        if (!strncmp(argv[0], "-v=", 3))
+        {
             log_verbose_level = atoi(argv[0] + 3);
             if (log_verbose_level < 0 || log_verbose_level > 5)
                 return print_help();
         }
-        else if (!strcmp(argv[0], "--repl")) {
+        else if (!strcmp(argv[0], "--repl"))
+        {
             is_repl_mode = true;
         }
-        else if (!strncmp(argv[0], "--stack-size=", 13)) {
+        else if (!strncmp(argv[0], "--stack-size=", 13))
+        {
             if (argv[0][13] == '\0')
                 return print_help();
             value_stack_size = atoi(argv[0] + 13);
         }
 #if WASM_ENABLE_FAST_JIT != 0
-        else if (!strncmp(argv[0], "--jit-codecache-size=", 21)) {
+        else if (!strncmp(argv[0], "--jit-codecache-size=", 21))
+        {
             if (argv[0][21] == '\0')
                 return print_help();
             jit_code_cache_size = atoi(argv[0] + 21);
         }
 #endif
 #if WASM_ENABLE_LIBC_WASI != 0
-        else if (!strncmp(argv[0], "--dir=", 6)) {
+        else if (!strncmp(argv[0], "--dir=", 6))
+        {
             if (argv[0][6] == '\0')
                 return print_help();
-            if (dir_list_size >= sizeof(dir_list) / sizeof(char *)) {
+            if (dir_list_size >= sizeof(dir_list) / sizeof(char *))
+            {
                 printf("Only allow max dir number %d\n",
                        (int)(sizeof(dir_list) / sizeof(char *)));
                 return 1;
             }
             dir_list[dir_list_size++] = argv[0] + 6;
         }
-        else if (!strncmp(argv[0], "--env=", 6)) {
+        else if (!strncmp(argv[0], "--env=", 6))
+        {
             char *tmp_env;
 
             if (argv[0][6] == '\0')
                 return print_help();
-            if (env_list_size >= sizeof(env_list) / sizeof(char *)) {
+            if (env_list_size >= sizeof(env_list) / sizeof(char *))
+            {
                 printf("Only allow max env number %d\n",
                        (int)(sizeof(env_list) / sizeof(char *)));
                 return 1;
             }
             tmp_env = argv[0] + 6;
 
-                printf("Wasm parse env string failed: expect \"key=value\", "
-                       "got \"%s\"\n",
-                       tmp_env);
-                return print_help();
-            
+            printf("Wasm parse env string failed: expect \"key=value\", "
+                   "got \"%s\"\n",
+                   tmp_env);
+            return print_help();
         }
         /* TODO: parse the configuration file via --addr-pool-file */
-        else if (!strncmp(argv[0], "--addr-pool=", strlen("--addr-pool="))) {
+        else if (!strncmp(argv[0], "--addr-pool=", strlen("--addr-pool=")))
+        {
             /* like: --addr-pool=100.200.244.255/30 */
             char *token = NULL;
 
@@ -207,8 +225,10 @@ int main(int argc, char *argv[]){
                 return print_help();
 
             token = strtok(argv[0] + strlen("--addr-pool="), ",");
-            while (token) {
-                if (addr_pool_size >= sizeof(addr_pool) / sizeof(char *)) {
+            while (token)
+            {
+                if (addr_pool_size >= sizeof(addr_pool) / sizeof(char *))
+                {
                     printf("Only allow max address number %d\n",
                            (int)(sizeof(addr_pool) / sizeof(char *)));
                     return 1;
@@ -218,11 +238,12 @@ int main(int argc, char *argv[]){
                 token = strtok(NULL, ";");
             }
         }
-        else if (!strncmp(argv[0], "--allow-resolve=", 16)) {
+        else if (!strncmp(argv[0], "--allow-resolve=", 16))
+        {
             if (argv[0][16] == '\0')
                 return print_help();
-            if (ns_lookup_pool_size
-                >= sizeof(ns_lookup_pool) / sizeof(ns_lookup_pool[0])) {
+            if (ns_lookup_pool_size >= sizeof(ns_lookup_pool) / sizeof(ns_lookup_pool[0]))
+            {
                 printf(
                     "Only allow max ns lookup number %d\n",
                     (int)(sizeof(ns_lookup_pool) / sizeof(ns_lookup_pool[0])));
@@ -239,30 +260,51 @@ int main(int argc, char *argv[]){
     app_argc = argc;
     app_argv = argv;
 
-    uint8 * file_buf = platform_read_file(wasm_file, &ret_size);
-    char error_buf[128] = { 0 };
+    log_set_verbose_level(log_verbose_level);
+    uint8 *file_buf = platform_read_file(wasm_file, &ret_size);
+    if (!file_buf)
+    {
+        goto fail;
+    }
+
+    char error_buf[128] = {0};
     WASMModule *module = wasm_loader(file_buf, ret_size, error_buf, 128);
-    wasm_validator(module, error_buf, 128);
-    wasm_instantiate(module, value_stack_size, exectution_stack_size, error_buf, 128);
+    if (!module)
+    {
+        goto fail;
+    }
+    if (!wasm_validator(module, error_buf, 128))
+    {
+        goto fail;
+    }
+
+    if (!wasm_instantiate(module, value_stack_size, exectution_stack_size, error_buf, 128))
+    {
+        goto fail;
+    }
 
     if (!wasm_runtime_wasi_init(
-                module,
-                dir_list, dir_list_size,
-                NULL, 0,
-                env_list, env_list_size,
-                addr_pool, addr_pool_size,
-                ns_lookup_pool,ns_lookup_pool_size, argv,
-                argc, -1, -1, -1, error_buf, 128)) {
-            goto fail;
+            module,
+            dir_list, dir_list_size,
+            NULL, 0,
+            env_list, env_list_size,
+            addr_pool, addr_pool_size,
+            ns_lookup_pool, ns_lookup_pool_size, argv,
+            argc, -1, -1, -1, error_buf, 128))
+    {
+        goto fail;
     }
-    
-    if (is_repl_mode) {
+
+    if (is_repl_mode)
+    {
         app_instance_repl(module);
     }
-    else {
-        execute_main(module,argc,argv);
+    else
+    {
+        execute_main(module, argc, argv);
     }
 
 fail:
+    os_printf("%s", error_buf);
     return 0;
 }

@@ -170,10 +170,12 @@ bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func,
         case VALUE_TYPE_FUNCREF:
         {
             arg_i32 = *argv_src++;
-            if (signature[i + 1] == '*') {
+            if (signature[i + 1] == '*')
+            {
                 arg_i64 = (uint64)wasm_runtime_addr_app_to_native(module, arg_i32);
             }
-            else {
+            else
+            {
                 arg_i64 = arg_i32;
             }
             stacks[n_stacks++] = arg_i64;
@@ -415,7 +417,7 @@ wasm_native_resolve_symbol(const char *module_name, const char *field_name,
         if (!strcmp(node->module_name, module_name))
         {
             if (!(func_ptr = lookup_symbol(node->native_symbols, node->n_native_symbols,
-                                         field_name, &signature)))
+                                           field_name, &signature)))
                 return NULL;
         }
         node = node_next;

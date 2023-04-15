@@ -3,19 +3,22 @@
 
 #include "wasm_type.h"
 
-typedef struct BlockType {
+typedef struct BlockType
+{
     /* Block type may be expressed in one of two forms:
      * either by the type of the single return value or
      * by a type index of module.
      */
-    union {
+    union
+    {
         uint8 value_type;
         WASMType *type;
     } u;
     bool is_value_type;
 } BlockType;
 
-typedef struct BranchBlock {
+typedef struct BranchBlock
+{
     uint8 label_type;
     BlockType block_type;
     uint8 *start_addr;
@@ -23,16 +26,18 @@ typedef struct BranchBlock {
     uint8 *end_addr;
     uint32 stack_cell_num;
 
-    uint32 *table_stack;
-    uint32 *table_stack_bottom;
-    uint32 table_stack_size;
-    uint32 table_stack_num;
+    uint32 *table_queue;
+    uint32 *table_queue_bottom;
+    uint32 table_queue_size;
+    uint32 table_queue_num;
+    uint32 branch_table_else_idx;
     uint32 branch_table_end_idx;
 
     bool is_stack_polymorphic;
 } BranchBlock;
 
-typedef struct WASMLoaderContext {
+typedef struct WASMLoaderContext
+{
     /* frame ref stack */
     uint8 *frame_ref;
     uint8 *frame_ref_bottom;
@@ -54,8 +59,7 @@ typedef struct WASMLoaderContext {
 
 } WASMLoaderContext;
 
-
 bool wasm_validator(WASMModule *module, char *error_buf,
-                             uint32 error_buf_size);
+                    uint32 error_buf_size);
 
 #endif

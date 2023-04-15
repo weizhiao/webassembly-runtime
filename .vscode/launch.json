@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/runtime",
-            "args": ["test.wasm"],
+            "args": ["stream3"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
             "environment": [],
