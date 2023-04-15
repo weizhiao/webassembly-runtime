@@ -105,7 +105,7 @@ memories_instantiate(WASMModule *module, char *error_buf, uint32 error_buf_size)
     }
 
     LOG_VERBOSE("Instantiate memory success.\n");
-    return  true;
+    return true;
 fail:
     LOG_VERBOSE("Instantiate memory fail.\n");
     set_error_buf(error_buf, error_buf_size, "Instantiate memory fail.\n");

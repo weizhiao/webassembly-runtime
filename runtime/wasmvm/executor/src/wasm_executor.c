@@ -18,29 +18,10 @@ static bool
 wasm_call_function(WASMExecEnv *exec_env, WASMFunction *function,
                    unsigned argc, uint32 argv[])
 {
-    WASMModuleInstance *module_inst = exec_env->module_inst;
+    WASMModule *module_inst = exec_env->module_inst;
 
     wasm_interp_call_wasm(module_inst, exec_env, function, argc, argv);
     return !wasm_get_exception(module_inst) ? true : false;
-}
-
-bool
-wasm_runtime_call_wasm(WASMExecEnv *exec_env,
-                       WASMFunction *function, uint32 argc,
-                       uint32 argv[])
-{
-    bool ret = false;
-    uint32 *new_argv = NULL, param_argc;
-
-    new_argv = argv;
-    param_argc = argc;
-
-
-    if (exec_env->module_inst->module_type == Wasm_Module_Bytecode)
-        ret = wasm_call_function(exec_env, function,
-                                 param_argc, new_argv);
-
-    return ret;
 }
 
 WASMFunction *
@@ -68,9 +49,6 @@ wasm_runtime_lookup_wasi_start_function(WASMModule *module_inst)
     return NULL;
 }
 
-/**
- * Implementation of wasm_application_execute_main()
- */
 static bool
 check_main_func_type(const WASMType *type)
 {
@@ -301,7 +279,7 @@ execute_func(WASMModule *module_inst, const char *name,
         goto fail;
     }
 
-    if (!wasm_runtime_call_wasm(exec_env, target_func, argc1, argv1)) {
+    if (!wasm_call_function(exec_env, target_func, argc1, argv1)) {
         goto fail;
     }
 
@@ -372,9 +350,7 @@ execute_main(WASMModule *module_inst, int32 argc, char *argv[])
     WASMFunction *func;
     WASMType *func_type = NULL;
     WASMExecEnv *exec_env = NULL;
-    char *argv_buf, *p, *p_end;
-    uint32 module_type;
-    bool ret, is_import_func = true;
+    bool ret;
 
     exec_env = wasm_exec_env_create(module_inst);
     if (!exec_env) {
@@ -384,7 +360,7 @@ execute_main(WASMModule *module_inst, int32 argc, char *argv[])
     }
 
     if ((func = wasm_runtime_lookup_wasi_start_function(module_inst))) {
-        return wasm_runtime_call_wasm(exec_env, func, 0, NULL);
+        return wasm_call_function(exec_env, func, 0, NULL);
     }
 
     if (!(func = wasm_lookup_function(module_inst, "main"))
@@ -397,24 +373,7 @@ execute_main(WASMModule *module_inst, int32 argc, char *argv[])
         return false;
     }
 
-#if WASM_ENABLE_INTERP != 0
-    if (module_inst->module_type == Wasm_Module_Bytecode) {
-        is_import_func = func->func_kind;
-    }
-#endif
-
-    if (is_import_func) {
-        wasm_set_exception(module_inst, "lookup main function failed");
-        return false;
-    }
-
-    module_type = module_inst->module_type;
     func_type = func->func_type;
-
-    if (!func_type) {
-        LOG_ERROR("invalid module instance type");
-        return false;
-    }
 
     if (!check_main_func_type(func_type)) {
         wasm_set_exception(module_inst,
@@ -422,7 +381,7 @@ execute_main(WASMModule *module_inst, int32 argc, char *argv[])
         return false;
     }
 
-    ret = wasm_runtime_call_wasm(exec_env, func, argc, argv);
+    ret = wasm_call_function(exec_env, func, argc, argv);
 
     return ret;
 }

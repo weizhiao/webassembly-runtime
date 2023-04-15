@@ -3,10 +3,48 @@
 #include "wasm_native.h"
 #include "wasm_memory.h"
 
-typedef int32 CellType_I32;
-typedef int64 CellType_I64;
-typedef float32 CellType_F32;
-typedef float64 CellType_F64;
+#define WASM_ENABLE_DEBUG_INTERP 0
+
+#if WASM_ENABLE_DEBUG_INTERP !=0
+
+static FILE *call_info;
+
+void 
+print_opcode(uint8 opcode ,uint32 fidx)
+{
+    switch(opcode) {
+        case WASM_OP_CALL:
+            os_printf("\n#####call function %d####\n", fidx);
+            fprintf(call_info, "\n#####call function %d####\n", fidx);
+            break;
+        case WASM_OP_BLOCK:
+            os_printf("\nblock\n");
+            break;
+        case WASM_OP_LOOP:
+            os_printf("\nloop\n");
+            break;
+        case WASM_OP_IF:
+            os_printf("\nif\n");
+            break;
+        case WASM_OP_END:
+            os_printf("end\n\n");
+            break;
+        case WASM_OP_I32_CONST:
+            os_printf("opcode:i32.const\n");
+            break;
+        case WASM_OP_I32_LOAD:
+            os_printf("opcode:i32.load\n");
+            break;        
+        case WASM_OP_BR_IF:
+            os_printf("opcode:br_if\n");
+            break;
+        default:
+            os_printf("opcode:%d\n",opcode);
+            break;
+    }
+}
+
+#endif
 
 #define READ_TYPE_VALUE(Type, p) (p += sizeof(Type), *(Type *)(p - sizeof(Type)))
 #define read_uint8(p) READ_TYPE_VALUE(uint8, p)
@@ -32,7 +70,6 @@ typedef float64 CellType_F64;
 
 #define WASM_ENABLE_LABELS_AS_VALUES 0
 
-#define BR_TABLE_TMP_BUF_LEN 32
 
 #define PUT_I32_TO_ADDR(addr, value)       \
     do {                                   \
@@ -92,12 +129,6 @@ typedef float64 CellType_F64;
     } while (0)
 #endif /* !defined(OS_ENABLE_HW_BOUND_CHECK) \
           || WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS == 0 */
-
-#define CHECK_ATOMIC_MEMORY_ACCESS()                                 \
-    do {                                                             \
-        if (((uintptr_t)maddr & (((uintptr_t)1 << align) - 1)) != 0) \
-            goto unaligned_atomic;                                   \
-    } while (0)
 
 static inline uint32
 rotl32(uint32 n, uint32 c)
@@ -293,7 +324,6 @@ read_leb(const uint8 *buf, uint32 *p_offset, uint32 maxbits, bool sign)
         }
     }
     if (sign && (shift < maxbits) && (byte & 0x40)) {
-        /* Sign extend */
         result |= (~((uint64)0)) << shift;
     }
     *p_offset = offset;
@@ -329,16 +359,6 @@ read_leb(const uint8 *buf, uint32 *p_offset, uint32 maxbits, bool sign)
         frame_sp += 2;                    \
     } while (0)
 
-#define PUSH_CSP(_label_type, param_cell_num, cell_num, _target_addr) \
-    do {                                                              \
-        /* frame_csp->label_type = _label_type; */                    \
-        frame_csp->cell_num = cell_num;                               \
-        frame_csp->begin_addr = frame_ip;                             \
-        frame_csp->target_addr = _target_addr;                        \
-        frame_csp->frame_sp = frame_sp - param_cell_num;              \
-        frame_csp++;                                                  \
-    } while (0)
-
 #define POP_I32() (--frame_sp, *(int32 *)frame_sp)
 
 #define POP_F32() (--frame_sp, *(float32 *)frame_sp)
@@ -347,23 +367,6 @@ read_leb(const uint8 *buf, uint32 *p_offset, uint32 maxbits, bool sign)
 
 #define POP_F64() (frame_sp -= 2, GET_F64_FROM_ADDR(frame_sp))
 
-#define POP_CSP_CHECK_OVERFLOW(n)                      \
-    do {                                               \
-         \
-    } while (0)
-
-#define POP_CSP()                  \
-    do {                           \
-        POP_CSP_CHECK_OVERFLOW(1); \
-        --frame_csp;               \
-    } while (0)
-
-/* Pop the given number of elements from the given frame's stack.  */
-#define POP(N)         \
-    do {               \
-        int n = (N);   \
-        frame_sp -= n; \
-    } while (0)
 
 #define read_leb_int64(p, p_end, res)              \
     do {                                           \
@@ -410,18 +413,6 @@ read_leb(const uint8 *buf, uint32 *p_offset, uint32 maxbits, bool sign)
         p += _off;                                 \
     } while (0)
 
-#if WASM_ENABLE_LABELS_AS_VALUES == 0
-#define RECOVER_FRAME_IP_END() frame_ip_end = cur_func->code_end
-#else
-#define RECOVER_FRAME_IP_END() (void)0
-#endif
-
-
-#if WASM_ENABLE_LABELS_AS_VALUES != 0
-#define GET_OPCODE() opcode = *(frame_ip - 1);
-#else
-#define GET_OPCODE() (void)0
-#endif
 
 #define DEF_OP_I_CONST(ctype, src_op_type)              \
     do {                                                \
@@ -643,98 +634,6 @@ trunc_f64_to_int(WASMModuleInstance *module, uint32 *frame_sp, float64 src_min,
             local_type = cur_func->local_types[local_idx - param_count]; \
     } while (0)
 
-#define DEF_ATOMIC_RMW_OPCODE(OP_NAME, op)                           \
-    case WASM_OP_ATOMIC_RMW_I32_##OP_NAME:                           \
-    case WASM_OP_ATOMIC_RMW_I32_##OP_NAME##8_U:                      \
-    case WASM_OP_ATOMIC_RMW_I32_##OP_NAME##16_U:                     \
-    {                                                                \
-        uint32 readv, sval;                                          \
-                                                                     \
-        sval = POP_I32();                                            \
-        addr = POP_I32();                                            \
-                                                                     \
-        if (opcode == WASM_OP_ATOMIC_RMW_I32_##OP_NAME##8_U) {       \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 1, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = (uint32)(*(uint8 *)maddr);                       \
-            *(uint8 *)maddr = (uint8)(readv op sval);                \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        else if (opcode == WASM_OP_ATOMIC_RMW_I32_##OP_NAME##16_U) { \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 2, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = (uint32)LOAD_U16(maddr);                         \
-            STORE_U16(maddr, (uint16)(readv op sval));               \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        else {                                                       \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 4, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = LOAD_I32(maddr);                                 \
-            STORE_U32(maddr, readv op sval);                         \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        PUSH_I32(readv);                                             \
-        break;                                                       \
-    }                                                                \
-    case WASM_OP_ATOMIC_RMW_I64_##OP_NAME:                           \
-    case WASM_OP_ATOMIC_RMW_I64_##OP_NAME##8_U:                      \
-    case WASM_OP_ATOMIC_RMW_I64_##OP_NAME##16_U:                     \
-    case WASM_OP_ATOMIC_RMW_I64_##OP_NAME##32_U:                     \
-    {                                                                \
-        uint64 readv, sval;                                          \
-                                                                     \
-        sval = (uint64)POP_I64();                                    \
-        addr = POP_I32();                                            \
-                                                                     \
-        if (opcode == WASM_OP_ATOMIC_RMW_I64_##OP_NAME##8_U) {       \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 1, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = (uint64)(*(uint8 *)maddr);                       \
-            *(uint8 *)maddr = (uint8)(readv op sval);                \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        else if (opcode == WASM_OP_ATOMIC_RMW_I64_##OP_NAME##16_U) { \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 2, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = (uint64)LOAD_U16(maddr);                         \
-            STORE_U16(maddr, (uint16)(readv op sval));               \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        else if (opcode == WASM_OP_ATOMIC_RMW_I64_##OP_NAME##32_U) { \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 4, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = (uint64)LOAD_U32(maddr);                         \
-            STORE_U32(maddr, (uint32)(readv op sval));               \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        else {                                                       \
-            uint64 op_result;                                        \
-            CHECK_BULK_MEMORY_OVERFLOW(addr + offset, 8, maddr);     \
-            CHECK_ATOMIC_MEMORY_ACCESS();                            \
-                                                                     \
-            os_mutex_lock(&node->shared_mem_lock);                   \
-            readv = (uint64)LOAD_I64(maddr);                         \
-            op_result = readv op sval;                               \
-            STORE_I64(maddr, op_result);                             \
-            os_mutex_unlock(&node->shared_mem_lock);                 \
-        }                                                            \
-        PUSH_I64(readv);                                             \
-        break;                                                       \
-    }
-
 static inline int32
 sign_ext_8_32(int8 val)
 {
@@ -790,7 +689,7 @@ ALLOC_FRAME(WASMExecEnv *exec_env, WASMFuncFrame *prev_frame)
 {
     if (exec_env->exectution_stack.top + sizeof(WASMFuncFrame) >= exec_env->exectution_stack.top_boundary) {
         wasm_set_exception(exec_env->module_inst,
-                           "wasm operand stack overflow");
+                           "wasm exectution stack overflow");
         return NULL;
     }
 
@@ -809,7 +708,7 @@ FREE_FRAME(WASMExecEnv *exec_env, WASMFuncFrame *frame)
 }
 
 #define CONTROL_TRANSFER() \
- do {                       \
+ do {                \
     uint32 push = cur_branch_table->push;\
     uint32 pop = cur_branch_table->pop;\
     frame_ip = cur_branch_table->ip;\
@@ -890,15 +789,10 @@ wasm_interp_call_func_native(WASMModule *module_inst,
 
 #else /* else of WASM_ENABLE_LABELS_AS_VALUES */
 #define HANDLE_OP(opcode) case opcode:
-#if WASM_ENABLE_THREAD_MGR != 0 && WASM_ENABLE_DEBUG_INTERP != 0
-#define HANDLE_OP_END()                                            \
-    if (exec_env->current_status->signal_flag == WAMR_SIG_SINGSTEP \
-        && exec_env->current_status->step_count++ == 2) {          \
-        exec_env->current_status->step_count = 0;                  \
-        SYNC_ALL_TO_FRAME();                                       \
-        wasm_cluster_thread_waiting_run(exec_env);                 \
-    }                                                              \
-    continue
+
+#if WASM_ENABLE_DEBUG_INTERP != 0
+#define HANDLE_OP_END() print_opcode(opcode, fidx);continue
+
 #else
 #define HANDLE_OP_END() continue
 #endif
@@ -910,7 +804,6 @@ get_global_addr(uint8 *global_data, WASMGlobal *global)
 {
     return global_data + global->data_offset;
 }
-
 
 static void
 wasm_interp_call_func_bytecode(WASMModuleInstance *module,
@@ -940,8 +833,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 
     register uint8 *frame_ip = frame->ip; 
     register uint32 *frame_lp = frame->lp;         
-    register uint32 *frame_sp = frame->sp;
-    uint32 frame_csp_num = 0;         
+    register uint32 *frame_sp = frame->sp;       
     uint8 *frame_ip_end = cur_func->code_end;
     
     uint8 opcode;
@@ -950,6 +842,11 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
     uint8 *maddr = NULL;
     uint32 local_idx, local_offset, global_idx;
     uint8 local_type, *global_addr;
+
+#if WASM_ENABLE_DEBUG_INTERP!=0
+    call_info = fopen("call_info.log", "w");
+
+#endif
 
 #if WASM_ENABLE_LABELS_AS_VALUES != 0
 #define HANDLE_OPCODE(op) &&HANDLE_##op
@@ -976,26 +873,26 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
             HANDLE_OP(WASM_OP_BLOCK)
             {
                 skip_leb_uint32(frame_ip, frame_ip_end);
-                frame_csp_num++;
                 HANDLE_OP_END();
             }
 
             HANDLE_OP(WASM_OP_LOOP)
             {
                 skip_leb_uint32(frame_ip, frame_ip_end);
-                frame_csp_num++;
                 HANDLE_OP_END();
             }
 
             HANDLE_OP(WASM_OP_IF)
             {
                 skip_leb_uint32(frame_ip, frame_ip_end);
-                frame_csp_num++;
                 cond = (uint32)POP_I32();
 
                 if (!cond) { 
                     frame_ip = cur_branch_table->ip;
                     cur_branch_table = branch_table + cur_branch_table->stp;
+                }
+                else {
+                    cur_branch_table++;
                 }
                 HANDLE_OP_END();
             }
@@ -1009,14 +906,13 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 
             HANDLE_OP(WASM_OP_END)
             {
-                if (frame_csp_num == 0) {
+                if (frame_ip == frame_ip_end) {
                     frame_sp -= cur_func->ret_cell_num;
                     for (i = 0; i < cur_func->ret_cell_num; i++) {
                         *prev_frame->sp++ = frame_sp[i];
                     }
                     goto return_func;
                 }
-                frame_csp_num--;
                 HANDLE_OP_END();
             }
 
@@ -1033,6 +929,9 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                 if (cond){
                     CONTROL_TRANSFER();
                 }
+                else {
+                    cur_branch_table++;
+                }
                 HANDLE_OP_END();
             }
 
@@ -1044,6 +943,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                     lidx = count;
                 cur_branch_table += lidx;
                 CONTROL_TRANSFER();
+                HANDLE_OP_END();
             }
 
             HANDLE_OP(WASM_OP_RETURN)
@@ -1058,6 +958,9 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
             HANDLE_OP(WASM_OP_CALL)
             {
                 read_leb_uint32(frame_ip, frame_ip_end, fidx);
+                
+                frame->function = cur_func;
+
                 cur_func = module->functions + fidx;
                 goto call_func_from_interp;
             }
@@ -1092,6 +995,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                     goto got_exception;
                 }
 
+                frame->function = cur_func;
                 /* always call module own functions */
                 cur_func = module->functions + fidx;
 
@@ -2701,11 +2605,11 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
         //保存函数栈帧
         frame->ip = frame_ip;
         frame->sp = frame_sp - cur_func->param_cell_num;
-        frame->frame_csp_num = frame_csp_num;
-        frame->function = cur_func;
         frame->lp = frame_lp;
+        frame->cur_branch_table = cur_branch_table;
 
         prev_frame = frame;
+        
 
         if (cur_func->func_kind) {
                 wasm_interp_call_func_native(module, exec_env, cur_func,
@@ -2731,13 +2635,16 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                 goto got_exception;
             }
 
-            frame_lp = frame_sp - cur_func->param_cell_num;
+            frame_lp = frame->lp = frame_sp - cur_func->param_cell_num;
 
             frame_ip = (uint8 *)cur_func->func_ptr;
             frame_ip_end = cur_func->code_end;
 
-            frame_sp = frame_sp + cur_func->local_cell_num;
-            frame_csp_num = 0;
+            frame_sp = frame->sp = frame_sp + cur_func->local_cell_num;
+
+            //切换跳转表
+            cur_branch_table = cur_func->branch_table;
+            branch_table = cur_func->branch_table;
 
             memset(frame_lp + cur_func->param_cell_num, 0,
                    (uint32)(cur_func->local_cell_num * 4));
@@ -2754,14 +2661,16 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
             /* Called from native. */
             return;
 
+        //恢复栈帧
         frame = prev_frame;            
         cur_func = frame->function;     
         prev_frame = frame->prev_frame;
-        frame_csp_num = frame->frame_csp_num; 
         frame_ip = frame->ip;           
-        RECOVER_FRAME_IP_END();         
+        frame_ip_end = cur_func->code_end;         
         frame_lp = frame->lp;           
-        frame_sp = frame->sp;           
+        frame_sp = frame->sp;
+        cur_branch_table = frame->cur_branch_table;  
+        branch_table = cur_func->branch_table;         
         HANDLE_OP_END();
     }
 
@@ -2783,188 +2692,6 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 }
 }
 
-
-#if WASM_ENABLE_FAST_JIT != 0
-static void
-fast_jit_call_func_bytecode(WASMModuleInstance *module_inst,
-                            WASMExecEnv *exec_env,
-                            WASMFunctionInstance *function,
-                            WASMInterpFrame *frame)
-{
-    JitGlobals *jit_globals = jit_compiler_get_jit_globals();
-    JitInterpSwitchInfo info;
-    WASMModule *module = module_inst->module;
-    WASMType *func_type = function->u.func->func_type;
-    uint8 type = func_type->result_count
-                     ? func_type->types[func_type->param_count]
-                     : VALUE_TYPE_VOID;
-    uint32 func_idx = (uint32)(function - module_inst->e->functions);
-    uint32 func_idx_non_import = func_idx - module->import_function_count;
-    int32 action;
-
-#if WASM_ENABLE_REF_TYPES != 0
-    if (type == VALUE_TYPE_EXTERNREF || type == VALUE_TYPE_FUNCREF)
-        type = VALUE_TYPE_I32;
-#endif
-
-#if WASM_ENABLE_LAZY_JIT != 0
-    if (!jit_compiler_compile(module, func_idx)) {
-        wasm_set_exception(module_inst, "failed to compile fast jit function");
-        return;
-    }
-#endif
-    bh_assert(jit_compiler_is_compiled(module, func_idx));
-
-    /* Switch to jitted code to call the jit function */
-    info.out.ret.last_return_type = type;
-    info.frame = frame;
-    frame->jitted_return_addr =
-        (uint8 *)jit_globals->return_to_interp_from_jitted;
-    action = jit_interp_switch_to_jitted(
-        exec_env, &info, func_idx,
-        module_inst->fast_jit_func_ptrs[func_idx_non_import]);
-    bh_assert(action == JIT_INTERP_ACTION_NORMAL
-              || (action == JIT_INTERP_ACTION_THROWN
-                  && wasm_runtime_get_exception(exec_env->module_inst)));
-
-    /* Get the return values form info.out.ret */
-    if (func_type->result_count) {
-        switch (type) {
-            case VALUE_TYPE_I32:
-                *(frame->sp - function->ret_cell_num) = info.out.ret.ival[0];
-                break;
-            case VALUE_TYPE_I64:
-                *(frame->sp - function->ret_cell_num) = info.out.ret.ival[0];
-                *(frame->sp - function->ret_cell_num + 1) =
-                    info.out.ret.ival[1];
-                break;
-            case VALUE_TYPE_F32:
-                *(frame->sp - function->ret_cell_num) = info.out.ret.fval[0];
-                break;
-            case VALUE_TYPE_F64:
-                *(frame->sp - function->ret_cell_num) = info.out.ret.fval[0];
-                *(frame->sp - function->ret_cell_num + 1) =
-                    info.out.ret.fval[1];
-                break;
-            default:
-                bh_assert(0);
-                break;
-        }
-    }
-    (void)action;
-    (void)func_idx;
-}
-#endif /* end of WASM_ENABLE_FAST_JIT != 0 */
-
-#if WASM_ENABLE_JIT != 0
-static bool
-llvm_jit_call_func_bytecode(WASMModuleInstance *module_inst,
-                            WASMExecEnv *exec_env,
-                            WASMFunctionInstance *function, uint32 argc,
-                            uint32 argv[])
-{
-    WASMType *func_type = function->u.func->func_type;
-    uint32 result_count = func_type->result_count;
-    uint32 ext_ret_count = result_count > 1 ? result_count - 1 : 0;
-    uint32 func_idx = (uint32)(function - module_inst->e->functions);
-    bool ret;
-
-#if (WASM_ENABLE_DUMP_CALL_STACK != 0) || (WASM_ENABLE_PERF_PROFILING != 0)
-    if (!llvm_jit_alloc_frame(exec_env, function - module_inst->e->functions)) {
-        /* wasm operand stack overflow has been thrown,
-           no need to throw again */
-        return false;
-    }
-#endif
-
-    if (ext_ret_count > 0) {
-        uint32 cell_num = 0, i;
-        uint8 *ext_ret_types = func_type->types + func_type->param_count + 1;
-        uint32 argv1_buf[32], *argv1 = argv1_buf, *ext_rets = NULL;
-        uint32 *argv_ret = argv;
-        uint32 ext_ret_cell = wasm_get_cell_num(ext_ret_types, ext_ret_count);
-        uint64 size;
-
-        /* Allocate memory all arguments */
-        size =
-            sizeof(uint32) * (uint64)argc /* original arguments */
-            + sizeof(void *)
-                  * (uint64)ext_ret_count /* extra result values' addr */
-            + sizeof(uint32) * (uint64)ext_ret_cell; /* extra result values */
-        if (size > sizeof(argv1_buf)) {
-            if (size > UINT32_MAX
-                || !(argv1 = wasm_runtime_malloc((uint32)size))) {
-                wasm_set_exception(module_inst, "allocate memory failed");
-                return false;
-            }
-        }
-
-        /* Copy original arguments */
-        bh_memcpy_s(argv1, (uint32)size, argv, sizeof(uint32) * argc);
-
-        /* Get the extra result value's address */
-        ext_rets =
-            argv1 + argc + sizeof(void *) / sizeof(uint32) * ext_ret_count;
-
-        /* Append each extra result value's address to original arguments */
-        for (i = 0; i < ext_ret_count; i++) {
-            *(uintptr_t *)(argv1 + argc + sizeof(void *) / sizeof(uint32) * i) =
-                (uintptr_t)(ext_rets + cell_num);
-            cell_num += wasm_value_type_cell_num(ext_ret_types[i]);
-        }
-
-        ret = wasm_runtime_invoke_native(
-            exec_env, module_inst->func_ptrs[func_idx], func_type, NULL, NULL,
-            argv1, argc, argv);
-        if (!ret) {
-            if (argv1 != argv1_buf)
-                wasm_runtime_free(argv1);
-            return ret;
-        }
-
-        /* Get extra result values */
-        switch (func_type->types[func_type->param_count]) {
-            case VALUE_TYPE_I32:
-            case VALUE_TYPE_F32:
-#if WASM_ENABLE_REF_TYPES != 0
-            case VALUE_TYPE_FUNCREF:
-            case VALUE_TYPE_EXTERNREF:
-#endif
-                argv_ret++;
-                break;
-            case VALUE_TYPE_I64:
-            case VALUE_TYPE_F64:
-                argv_ret += 2;
-                break;
-#if WASM_ENABLE_SIMD != 0
-            case VALUE_TYPE_V128:
-                argv_ret += 4;
-                break;
-#endif
-            default:
-                bh_assert(0);
-                break;
-        }
-
-        ext_rets =
-            argv1 + argc + sizeof(void *) / sizeof(uint32) * ext_ret_count;
-        bh_memcpy_s(argv_ret, sizeof(uint32) * cell_num, ext_rets,
-                    sizeof(uint32) * cell_num);
-
-        if (argv1 != argv1_buf)
-            wasm_runtime_free(argv1);
-        return true;
-    }
-    else {
-        ret = wasm_runtime_invoke_native(
-            exec_env, module_inst->func_ptrs[func_idx], func_type, NULL, NULL,
-            argv, argc, argv);
-
-        return ret && !wasm_get_exception(module_inst) ? true : false;
-    }
-}
-#endif /* end of WASM_ENABLE_JIT != 0 */
-
 void
 wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
                       WASMFunction *function, uint32 argc,
@@ -2972,7 +2699,6 @@ wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
 {
     WASMFuncFrame *frame;
     unsigned i;
-    bool copy_argv_from_frame = true;
 
     if (argc < function->param_cell_num) {
         char buf[128];
@@ -2988,7 +2714,6 @@ wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
     if (!(frame = ALLOC_FRAME(exec_env, NULL)))
         return;
 
-    frame->function = function;
     frame->ip = NULL;
     frame->sp = (uint32 *)exec_env->value_stack.top;
 
@@ -3008,13 +2733,10 @@ wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
     default:
         break;
     }
-
-    /* Output the return value to the caller */
+    
     if (!wasm_get_exception(module_inst)) {
-        if (copy_argv_from_frame) {
-            for (i = 0; i < function->ret_cell_num; i++) {
-                argv[i] = *(frame->sp + i - function->ret_cell_num);
-            }
+        for (i = 0; i < function->ret_cell_num; i++) {
+            argv[i] = *(frame->sp + i - function->ret_cell_num);
         }
     }
     FREE_FRAME(exec_env, frame);

@@ -10,8 +10,6 @@ functions_instantiate(WASMModule *module,
     WASMType *type;
     void *linked_func = NULL;
     const char *linked_signature = NULL;
-    void *linked_attachment = NULL;
-    bool linked_call_conv_raw = false;
     const char *module_name, *field_name;
 
     import_function_count = module->import_function_count;
@@ -24,18 +22,15 @@ functions_instantiate(WASMModule *module,
         field_name = func->field_name;
         type = func->func_type;
         linked_func = wasm_native_resolve_symbol(
-            module_name, field_name, type, &linked_signature,
-            &linked_attachment, &linked_call_conv_raw);
+            module_name, field_name, type, &linked_signature);
         if (linked_func) {
             func->func_kind = Native_Func;
             func->func_ptr = linked_func;
         }
         else{
-            func->func_kind = External_Func;
-            func->func_ptr = NULL;
+            goto fail;
         }
         func->signature = linked_signature;
-        func->attachment = linked_attachment;
     }
 
     module->function_count = sum_function_count;

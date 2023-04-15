@@ -751,10 +751,8 @@ wasm_validator_code(WASMModule *module, WASMFunction *func,
             case WASM_OP_IF:
                 POP_I32();
                 
-                goto handle_op_block_and_loop;
             case WASM_OP_BLOCK:
             case WASM_OP_LOOP:
-            handle_op_block_and_loop:
             {
                 uint8 value_type;
                 BlockType block_type;
@@ -878,7 +876,12 @@ wasm_validator_code(WASMModule *module, WASMFunction *func,
                     }
                 }
 
-                cur_block->end_addr = p - 1;
+                if(cur_block->label_type == LABEL_TYPE_LOOP) {
+                    cur_block->end_addr = cur_block->start_addr;
+                }
+                else {
+                    cur_block->end_addr = p - 1;
+                }
 
                 POP_CSP();
 
@@ -1964,7 +1967,7 @@ bool wasm_validator(WASMModule *module, char *error_buf,
     if (!module->possible_memory_grow) {
         WASMMemory *memory = module->memories;
 
-        for(i = 0; i < module->memory_count; i++, memory++)
+        for(i = 0; i < module->memory_count; i++, memory++) {
             if (memory->cur_page_count < DEFAULT_MAX_PAGES)
                 memory->num_bytes_per_page *= memory->cur_page_count;
             else
@@ -1974,6 +1977,7 @@ bool wasm_validator(WASMModule *module, char *error_buf,
                 memory->cur_page_count = memory->max_page_count = 1;
             else
                 memory->cur_page_count = memory->max_page_count = 0;
+        }
     }
 
     LOG_VERBOSE("Validate success.\n");

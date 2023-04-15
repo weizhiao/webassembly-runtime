@@ -264,8 +264,6 @@ typedef struct WASMFunction {
     const char *field_name;
     /* signature from registered native symbols */
     const char *signature;
-    /* attachment */
-    void *attachment;
     
     WASMType *func_type;
 
@@ -319,9 +317,7 @@ typedef struct WASMExportMemInstance {
     WASMMemory *memory;
 } WASMExportMemInstance;
 
-struct WASMExecEnv;
 struct WASIContext;
-typedef struct WASMExecEnv WASMExecEnv;
 typedef struct WASIContext WASIContext;
 
 typedef struct WASMModule {

@@ -17,6 +17,8 @@
         "platform_api.h": "c",
         "bh_list.h": "c",
         "wasm_runtime_init_api.h": "c",
-        "wasm_runtime_instantiate_api.h": "c"
+        "wasm_runtime_instantiate_api.h": "c",
+        "wasm_memory.h": "c",
+        "runtime_log.h": "c"
     }
 }

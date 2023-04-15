@@ -8,6 +8,7 @@
 #include "wasm_native.h"
 #include "wasm_wasi.h"
 #include "wasm_memory.h"
+#include "wasm_exception.h"
 
 typedef struct WASMExecEnv* wasm_exec_env_t;
 typedef struct WASMModule *wasm_module_inst_t;
@@ -649,7 +650,7 @@ wasi_fd_write(wasm_exec_env_t exec_env, wasi_fd_t fd,
             err = (wasi_errno_t)-1;
             goto fail;
         }
-        ciovec->buf = (char *)addr_app_to_native(iovec_app->buf_offset);
+        ciovec->buf = addr_app_to_native(iovec_app->buf_offset);
         ciovec->buf_len = iovec_app->buf_len;
     }
 

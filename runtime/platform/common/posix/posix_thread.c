@@ -22,31 +22,6 @@ typedef struct {
 static os_thread_local_attribute os_signal_handler signal_handler;
 #endif
 
-static void *
-os_thread_wrapper(void *arg)
-{
-    thread_wrapper_arg *targ = arg;
-    thread_start_routine_t start_func = targ->start;
-    void *thread_arg = targ->arg;
-#ifdef OS_ENABLE_HW_BOUND_CHECK
-    os_signal_handler handler = targ->signal_handler;
-#endif
-
-#if 0
-    os_printf("THREAD CREATED %jx\n", (uintmax_t)(uintptr_t)pthread_self());
-#endif
-    BH_FREE(targ);
-#ifdef OS_ENABLE_HW_BOUND_CHECK
-    if (os_thread_signal_init(handler) != 0)
-        return NULL;
-#endif
-    start_func(thread_arg);
-#ifdef OS_ENABLE_HW_BOUND_CHECK
-    os_thread_signal_destroy();
-#endif
-    return NULL;
-}
-
 korp_tid
 os_self_thread()
 {

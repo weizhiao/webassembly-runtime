@@ -32,7 +32,7 @@ os_vprintf(const char *format, va_list ap)
 unsigned char *
 platform_read_file(const char *filename, unsigned int *ret_size)
 {
-    char *buffer;
+    unsigned char *buffer;
     int file;
     uint32 file_size, buf_size, read_size;
     struct stat stat_buf;

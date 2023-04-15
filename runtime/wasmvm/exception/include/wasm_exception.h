@@ -11,14 +11,4 @@ wasm_set_exception(WASMModuleInstance *module_inst, const char *exception);
 const char *
 wasm_get_exception(WASMModuleInstance *module_inst);
 
-//判断是否超出线性内存的大小
-bool
-wasm_runtime_validate_app_addr(WASMModuleInstance *module_inst_comm,
-                               uint32 app_offset, uint32 size);
-
-//
-bool
-wasm_runtime_validate_app_str_addr(WASMModuleInstance *module_inst_comm,
-                                   uint32 app_str_offset);
-
 #endif

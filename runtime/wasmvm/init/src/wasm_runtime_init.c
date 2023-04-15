@@ -251,26 +251,6 @@ fail:
     return false;
 }
 
-static bool
-wasm_native_init()
-{
-    NativeSymbol *native_symbols;
-    uint32 n_native_symbols;
-
-    n_native_symbols = get_libc_wasi_export_apis(&native_symbols);
-    if (!wasm_native_register_natives("wasi_unstable", native_symbols,
-                                      n_native_symbols))
-        goto fail;
-    if (!wasm_native_register_natives("wasi_snapshot_preview1", native_symbols,
-                                      n_native_symbols))
-        goto fail;
-
-    return true;
-fail:
-    wasm_native_destroy();
-    return false;
-}
-
 bool
 wasm_runtime_init_env()
 {
