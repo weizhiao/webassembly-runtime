@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "wasm_runtime_api.h"
 #include "wasm_exception.h"
+#include "wasm_memory.h"
 
 static int app_argc;
 static char **app_argv;
@@ -12,16 +13,10 @@ print_help()
     printf("options:\n");
     printf("  -f|--function name       Specify a function name of the module to run rather\n"
            "                           than main\n");
-#if WASM_ENABLE_LOG != 0
     printf("  -v=n                     Set log verbose level (0 to 5, default is 2) larger\n"
            "                           level with more log\n");
-#endif
     printf("  --stack-size=n           Set maximum stack size in bytes, default is 64 KB\n");
     printf("  --heap-size=n            Set maximum heap size in bytes, default is 16 KB\n");
-#if WASM_ENABLE_FAST_JIT != 0
-    printf("  --jit-codecache-size=n   Set fast jit maximum code cache size in bytes,\n");
-    printf("                           default is %u KB\n", FAST_JIT_DEFAULT_CODE_CACHE_SIZE / 1024);
-#endif
     printf("  --repl                   Start a very simple REPL (read-eval-print-loop) mode\n"
            "                           that runs commands in the form of \"FUNC ARG...\"\n");
 #if WASM_ENABLE_LIBC_WASI != 0
@@ -40,22 +35,6 @@ print_help()
     printf("                           --allow-resolve=example.com # allow the lookup of the specific domain\n");
     printf("                           --allow-resolve=*.example.com # allow the lookup of all subdomains\n");
     printf("                           --allow-resolve=* # allow any lookup\n");
-#endif
-#if BH_HAS_DLFCN
-    printf("  --native-lib=<lib>       Register native libraries to the WASM module, which\n");
-    printf("                           are shared object (.so) files, for example:\n");
-    printf("                             --native-lib=test1.so --native-lib=test2.so\n");
-#endif
-#if WASM_ENABLE_MULTI_MODULE != 0
-    printf("  --module-path=<path>     Indicate a module search path. default is current\n"
-           "                           directory('./')\n");
-#endif
-#if WASM_ENABLE_LIB_PTHREAD != 0
-    printf("  --max-threads=n          Set maximum thread number per cluster, default is 4\n");
-#endif
-#if WASM_ENABLE_DEBUG_INTERP != 0
-    printf("  -g=ip:port               Set the debug sever address, default is debug disabled\n");
-    printf("                             if port is 0, then a random port will be used\n");
 #endif
     printf("  --version                Show version information\n");
     return 1;
@@ -103,7 +82,7 @@ split_string(char *str, int *count)
 }
 
 static void *
-app_instance_repl(WASMModuleInstance *module_inst)
+app_instance_repl(WASMModule *module_inst)
 {
     char *cmd = NULL;
     size_t len = 0;
@@ -176,14 +155,7 @@ int main(int argc, char *argv[])
                 return print_help();
             value_stack_size = atoi(argv[0] + 13);
         }
-#if WASM_ENABLE_FAST_JIT != 0
-        else if (!strncmp(argv[0], "--jit-codecache-size=", 21))
-        {
-            if (argv[0][21] == '\0')
-                return print_help();
-            jit_code_cache_size = atoi(argv[0] + 21);
-        }
-#endif
+
 #if WASM_ENABLE_LIBC_WASI != 0
         else if (!strncmp(argv[0], "--dir=", 6))
         {
@@ -265,23 +237,21 @@ int main(int argc, char *argv[])
     uint8 *file_buf = platform_read_file(wasm_file, &ret_size);
     if (!file_buf)
     {
-        goto fail;
+        goto read_file_fail;
     }
 
-    WASMModule *module = wasm_loader(file_buf, ret_size);
+    WASMModule *module = wasm_module_create();
     if (!module)
-    {
+        goto create_module_fail;
+
+    if (!wasm_loader(module, file_buf, ret_size))
         goto fail;
-    }
+
     if (!wasm_validator(module))
-    {
         goto fail;
-    }
 
     if (!wasm_instantiate(module, value_stack_size, exectution_stack_size))
-    {
         goto fail;
-    }
 
     if (!wasm_runtime_wasi_init(
             module,
@@ -304,7 +274,15 @@ int main(int argc, char *argv[])
         execute_main(module, argc, argv);
     }
 
+    wasm_module_destory(module);
+    wasm_runtime_free(file_buf);
+    return 0;
+
 fail:
     os_printf("%s", wasm_get_exception(module));
+    wasm_module_destory(module);
+create_module_fail:
+    wasm_runtime_free(file_buf);
+read_file_fail:
     return 0;
 }

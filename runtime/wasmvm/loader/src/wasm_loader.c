@@ -1,17 +1,12 @@
 #include "wasm_loader.h"
 #include "wasm_runtime_loader_api.h"
 
-WASMModule *
-wasm_loader(uint8 *buf, uint32 size){
+bool
+wasm_loader(WASMModule *module, uint8 *buf, uint32 size){
     uint32 magic_number, version, payload_len = 0, name_len = 0;
     const uint8 *p = buf, *p_end = p + size;
     const uint8 *section_data_start, *section_data_end;
     uint8 id;
-    WASMModule *module = create_module();
-
-    if(!module){
-        return NULL;
-    }
 
     magic_number = read_uint32(p);
 
@@ -127,8 +122,7 @@ wasm_loader(uint8 *buf, uint32 size){
 
 #if WASM_ENABLE_BULK_MEMORY != 0
         case SECTION_TYPE_DATACOUNT:
-            
-
+            break;
 #endif
 
         default:
@@ -137,9 +131,8 @@ wasm_loader(uint8 *buf, uint32 size){
     }
 
     LOG_VERBOSE("Load success.\n");
-    return module;
+    return true;
 fail:
     LOG_VERBOSE("Load fail.\n");
-    wasm_module_destory(module, Load);
-    return NULL;
+    return false;
 }

@@ -7,8 +7,7 @@ wasm_runtime_malloc(uint64 size)
     return os_malloc((uint32)size);
 }
 
-void
-wasm_runtime_free(void *ptr)
+void wasm_runtime_free(void *ptr)
 {
     os_free(ptr);
 }
@@ -19,8 +18,7 @@ wasm_runtime_realloc(void *ptr, uint32 size)
     return os_realloc(ptr, size);
 }
 
-bool
-wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count)
+bool wasm_enlarge_memory(WASMModule *module, uint32 inc_page_count)
 {
     WASMMemory *memory = module->memories;
     uint8 *memory_data_old, *memory_data_new;
@@ -31,7 +29,6 @@ wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count)
 
     if (!memory)
         return false;
-
 
     memory_data_old = memory->memory_data;
     total_size_old = memory->memory_data_size;
@@ -47,11 +44,13 @@ wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count)
         return true;
 
     if (total_page_count < cur_page_count /* integer overflow */
-        || total_page_count > max_page_count) {
+        || total_page_count > max_page_count)
+    {
         return false;
     }
 
-    if (total_size_new > UINT32_MAX) {
+    if (total_size_new > UINT32_MAX)
+    {
         /* Resize to 1 page with size 4G-1 */
         num_bytes_per_page = UINT32_MAX;
         total_page_count = max_page_count = 1;
@@ -59,7 +58,8 @@ wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count)
     }
 
     if (!(memory_data_new =
-              wasm_runtime_realloc(memory_data_old, (uint32)total_size_new))) {
+              wasm_runtime_realloc(memory_data_old, (uint32)total_size_new)))
+    {
         return false;
     }
 
@@ -81,12 +81,13 @@ uint32
 wasm_runtime_addr_native_to_app(WASMModule *module_inst_comm,
                                 void *native_ptr)
 {
-    WASMModuleInstance *module_inst = (WASMModuleInstance *)module_inst_comm;
+    WASMModule *module_inst = (WASMModule *)module_inst_comm;
     WASMMemory *memory_inst;
     uint8 *addr = (uint8 *)native_ptr;
 
     memory_inst = module_inst->memories;
-    if (!memory_inst) {
+    if (!memory_inst)
+    {
         return 0;
     }
 
@@ -96,24 +97,26 @@ wasm_runtime_addr_native_to_app(WASMModule *module_inst_comm,
     return 0;
 }
 
-bool
-wasm_runtime_validate_app_addr(WASMModule *module_inst_comm,
-                               uint32 app_offset, uint32 size)
+bool wasm_runtime_validate_app_addr(WASMModule *module_inst_comm,
+                                    uint32 app_offset, uint32 size)
 {
     WASMModule *module_inst = module_inst_comm;
     WASMMemory *memory_inst;
 
     memory_inst = module_inst->memories;
-    if (!memory_inst) {
+    if (!memory_inst)
+    {
         goto fail;
     }
 
     /* integer overflow check */
-    if (app_offset > UINT32_MAX - size) {
+    if (app_offset > UINT32_MAX - size)
+    {
         goto fail;
     }
 
-    if (app_offset + size <= memory_inst->memory_data_size) {
+    if (app_offset + size <= memory_inst->memory_data_size)
+    {
         return true;
     }
 
@@ -130,38 +133,41 @@ wasm_runtime_addr_app_to_native(WASMModule *module_inst,
     uint8 *addr;
 
     memory_inst = module_inst->memories;
-    if (!memory_inst) {
+    if (!memory_inst)
+    {
         return NULL;
     }
 
     addr = memory_inst->memory_data + app_offset;
 
-    if (memory_inst->memory_data <= addr && addr < memory_inst->memory_data_end) {
+    if (memory_inst->memory_data <= addr && addr < memory_inst->memory_data_end)
+    {
         return addr;
     }
     return NULL;
 }
 
-bool
-wasm_runtime_validate_native_addr(WASMModule *module_inst_comm,
-                                  void *native_ptr, uint32 size)
+bool wasm_runtime_validate_native_addr(WASMModule *module_inst_comm,
+                                       void *native_ptr, uint32 size)
 {
-    WASMModuleInstance *module_inst = (WASMModuleInstance *)module_inst_comm;
+    WASMModule *module_inst = (WASMModule *)module_inst_comm;
     WASMMemory *memory_inst;
     uint8 *addr = (uint8 *)native_ptr;
 
     memory_inst = module_inst->memories;
-    if (!memory_inst) {
+    if (!memory_inst)
+    {
         goto fail;
     }
 
     /* integer overflow check */
-    if ((uintptr_t)addr > UINTPTR_MAX - size) {
+    if ((uintptr_t)addr > UINTPTR_MAX - size)
+    {
         goto fail;
     }
 
-    if (memory_inst->memory_data <= addr
-        && addr + size <= memory_inst->memory_data_end) {
+    if (memory_inst->memory_data <= addr && addr + size <= memory_inst->memory_data_end)
+    {
         return true;
     }
 
@@ -170,180 +176,164 @@ fail:
     return false;
 }
 
-void 
-wasm_module_destory(WASMModule *module, Stage stage)
+void wasm_module_destory(WASMModule *module)
 {
     uint32 i, table_count, memory_count;
+    WASMModuleStage module_stage = module->module_stage;
     WASMType *type;
     WASMTable *table;
     WASMMemory *memory;
+    WASMFunction *function;
 
     if (!module)
         return;
 
-    //销毁实例化阶段额外创建的内存
-    if (stage == Instantiate) {
+    switch (module_stage)
+    {
+    case Execute:
+    case Instantiate:
         table_count = module->table_count;
         memory_count = module->memory_count;
 
-        if(module->global_data){
+        if (module->global_data)
+        {
             wasm_runtime_free(module->global_data);
         }
-        if(module->wasi_ctx){
+        if (module->wasi_ctx)
+        {
             wasm_runtime_free(module->wasi_ctx);
         }
-        if(module->export_functions){
+        if (module->export_functions)
+        {
             wasm_runtime_free(module->export_functions);
         }
-        if(table_count){
+        if (table_count)
+        {
             table = module->tables;
-            for(i = 0; i < table_count; i++, table++){
-                if(table->table_data){
+            for (i = 0; i < table_count; i++, table++)
+            {
+                if (table->table_data)
+                {
                     wasm_runtime_free(table->table_data);
                 }
             }
         }
-        if(memory_count){
+        if (memory_count)
+        {
             memory = module->memories;
-            for(i = 0; i < memory_count; i++, memory++){
-                if(memory->memory_data){
+            for (i = 0; i < memory_count; i++, memory++)
+            {
+                if (memory->memory_data)
+                {
                     wasm_runtime_free(memory->memory_data);
                 }
             }
         }
-    }
-
-    //清除type段
-    if (module->types) {
-        for (i = 0; i < module->type_count; i++) {
-            type = module->types[i];
-            if (type){
-                if(type->ref_count > 1){
-                    type->ref_count--;
+    case Validate:
+        function = module->functions + module->import_function_count;
+        for (i = 0; i < module->function_count; i++, function++) {
+            if (function->branch_table) {
+                wasm_runtime_free(function->branch_table);
+            }
+        }
+    case Load:
+        // 清除type段
+        if (module->types)
+        {
+            for (i = 0; i < module->type_count; i++)
+            {
+                type = module->types[i];
+                if (type)
+                {
+                    if (type->ref_count > 1)
+                    {
+                        type->ref_count--;
+                    }
+                    else
+                    {
+                        wasm_runtime_free(type);
+                    }
                 }
-                else{
-                    wasm_runtime_free(type);
+            }
+            wasm_runtime_free(module->types);
+        }
+
+        // 清除global段
+        if (module->globals)
+        {
+            wasm_runtime_free(module->globals);
+        }
+
+        // 清除table
+        if (module->tables)
+        {
+            wasm_runtime_free(module->tables);
+        }
+
+        // 清除memory
+        if (module->memories)
+        {
+            wasm_runtime_free(module->memories);
+        }
+
+        // 清除function
+        if (module->functions)
+        {
+            function = module->functions + module->import_function_count;
+            for (i = 0; i < module->function_count; i++, function++)
+            {
+                if (function->local_offsets)
+                {
+                    wasm_runtime_free(function->local_offsets);
+                }
+                if (function->local_types)
+                {
+                    wasm_runtime_free(function->local_types);
                 }
             }
+            wasm_runtime_free(module->functions);
         }
-        wasm_runtime_free(module->types);
-    }
 
-    //清除global段
-    if(module->globals){
-        wasm_runtime_free(module->globals);
-    }
+        // 清除export
+        if (module->exports)
+            wasm_runtime_free(module->exports);
 
-    //清除table
-    if(module->tables){
-        wasm_runtime_free(module->tables);
-    }
-
-    //清除memory
-    if(module->memories){
-        wasm_runtime_free(module->memories);
-    }
-
-    //清除function
-    if (module->functions) {
-        for (i = 0; i < module->function_count; i++) {
-            WASMFunction *func = module->functions + i;
-            if (func->local_offsets) {
-                wasm_runtime_free(func->local_offsets);
+        // 清除element
+        if (module->elements)
+        {
+            for (i = 0; i < module->element_count; i++)
+            {
+                if (module->elements[i].func_indexes)
+                    wasm_runtime_free(module->elements[i].func_indexes);
             }
-            if (func->local_types) {
-                wasm_runtime_free(func->local_types);
-            }
+            wasm_runtime_free(module->elements);
         }
-        wasm_runtime_free(module->functions);
-    }
 
-    //清除export
-    if (module->exports)
-        wasm_runtime_free(module->exports);
-
-    //清除element
-    if (module->elements) {
-        for (i = 0; i < module->element_count; i++) {
-            if (module->elements[i].func_indexes)
-                wasm_runtime_free(module->elements[i].func_indexes);
+        // 清除data
+        if (module->data_segments)
+        {
+            wasm_runtime_free(module->data_segments);
         }
-        wasm_runtime_free(module->elements);
-    }
-
-    //清除data
-    if (module->data_segments) {
-        wasm_runtime_free(module->data_segments);
+        break;
     }
 
     wasm_runtime_free(module);
 }
 
 WASMModule *
-create_module()
+wasm_module_create()
 {
     WASMModule *module = wasm_runtime_malloc(sizeof(WASMModule));
 
-    if (!module) {
+    if (!module)
+    {
         return NULL;
     }
 
     memset(module, 0, sizeof(WASMModule));
 
-    module->module_type = Wasm_Module_Bytecode;
+    module->module_stage = Load;
     module->start_function = (uint32)-1;
 
     return module;
-}
-
-bool
-wasm_runtime_get_app_addr_range(WASMModule *module_inst_comm,
-                                uint32 app_offset, uint32 *p_app_start_offset,
-                                uint32 *p_app_end_offset)
-{
-    WASMModuleInstance *module_inst = (WASMModuleInstance *)module_inst_comm;
-    WASMMemory *memory_inst;
-    uint32 memory_data_size;
-
-    memory_inst = module_inst->memories;
-    if (!memory_inst) {
-        return false;
-    }
-
-    memory_data_size = memory_inst->memory_data_size;
-
-    if (app_offset < memory_data_size) {
-        if (p_app_start_offset)
-            *p_app_start_offset = 0;
-        if (p_app_end_offset)
-            *p_app_end_offset = memory_data_size;
-        return true;
-    }
-
-    return false;
-}
-
-bool
-wasm_runtime_validate_app_str_addr(WASMModuleInstance *module_inst_comm,
-                                   uint32 app_str_offset)
-{
-    WASMModuleInstance *module_inst = (WASMModuleInstance *)module_inst_comm;
-    uint32 app_end_offset;
-    char *str, *str_end;
-
-    if (!wasm_runtime_get_app_addr_range(module_inst_comm, app_str_offset, NULL,
-                                         &app_end_offset))
-        goto fail;
-
-    str = wasm_runtime_addr_app_to_native(module_inst_comm, app_str_offset);
-    str_end = str + (app_end_offset - app_str_offset);
-    while (str < str_end && *str != '\0')
-        str++;
-    if (str == str_end)
-        goto fail;
-
-    return true;
-fail:
-    wasm_set_exception(module_inst, "out of bounds memory access");
-    return false;
 }

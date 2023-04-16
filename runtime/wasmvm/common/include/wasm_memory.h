@@ -17,12 +17,12 @@ void *
 wasm_runtime_realloc(void *ptr, uint32 size);
 
 //销毁module
-void 
-wasm_module_destory(WASMModule *module, Stage stage);
+void
+wasm_module_destory(WASMModule *module);
 
 //创建module
 WASMModule *
-create_module();
+wasm_module_create();
 
 bool
 wasm_runtime_validate_native_addr(WASMModule *module_inst_comm,
@@ -41,10 +41,6 @@ wasm_runtime_addr_native_to_app(WASMModule *module_inst_comm,
                                 void *native_ptr);
 
 bool
-wasm_enlarge_memory(WASMModuleInstance *module, uint32 inc_page_count);
-
-bool
-wasm_runtime_validate_app_str_addr(WASMModuleInstance *module_inst_comm,
-                                   uint32 app_str_offset);
+wasm_enlarge_memory(WASMModule *module, uint32 inc_page_count);
 
 #endif

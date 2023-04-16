@@ -4,10 +4,8 @@
 bool
 wasm_instantiate(WASMModule *module, uint32 value_stack_size, uint32 execution_stack_size)
 {
-    if (!module)
-        return false;
-
-    module->module_type = Wasm_Module_Bytecode;
+   
+    module->module_stage = Instantiate;
 
     /* Instantiate memories/tables/functions */
     if (!globals_instantiate(module)
@@ -34,6 +32,5 @@ wasm_instantiate(WASMModule *module, uint32 value_stack_size, uint32 execution_s
 
 fail:
     LOG_VERBOSE("Instantiate fail.\n");
-    wasm_module_destory(module, Instantiate);
     return false;
 }

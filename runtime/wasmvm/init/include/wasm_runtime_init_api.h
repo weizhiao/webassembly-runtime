@@ -3,6 +3,7 @@
 
 #include "platform.h"
 #include "runtime_utils.h"
+#include "wasm_type.h"
 
 //初始化wasmvm环境
 bool

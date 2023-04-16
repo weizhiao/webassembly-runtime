@@ -92,8 +92,9 @@ typedef enum {
 typedef enum {
     Load = 0,
     Validate,
-    Instantiate
-}Stage;
+    Instantiate,
+    Execute
+}WASMModuleStage;
 
 typedef union V128 {
     int8 i8x16[16];
@@ -321,8 +322,8 @@ struct WASIContext;
 typedef struct WASIContext WASIContext;
 
 typedef struct WASMModule {
-    //module的类型
-    uint32 module_type;
+
+    WASMModuleStage module_stage;
 
     //各种类型的数量
     uint32 type_count;
@@ -371,7 +372,7 @@ typedef struct WASMModule {
 
     bool possible_memory_grow;
 
-}WASMModule,WASMModuleInstance;
+}WASMModule;
 
 inline static unsigned
 align_uint(unsigned v, unsigned b)
@@ -411,6 +412,20 @@ wasm_get_cell_num(const uint8 *types, uint32 type_count)
     for (i = 0; i < type_count; i++)
         cell_num += wasm_value_type_cell_num(types[i]);
     return cell_num;
+}
+
+//检查类型是否为value
+static inline bool
+is_value_type(uint8 type)
+{
+    if (type == VALUE_TYPE_I32 || type == VALUE_TYPE_I64
+        || type == VALUE_TYPE_F32 || type == VALUE_TYPE_F64
+#if WASM_ENABLE_REF_TYPES != 0
+        || type == VALUE_TYPE_FUNCREF || type == VALUE_TYPE_EXTERNREF
+#endif
+    )
+        return true;
+    return false;
 }
 
 

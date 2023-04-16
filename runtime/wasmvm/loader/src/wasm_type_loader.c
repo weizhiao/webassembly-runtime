@@ -1,5 +1,21 @@
 #include "wasm_loader.h"
 
+//检查两个type是否相同
+inline static bool
+wasm_type_equal(const WASMType *type1, const WASMType *type2)
+{
+    if (type1 == type2) {
+        return true;
+    }
+    return (type1->param_count == type2->param_count
+            && type1->result_count == type2->result_count
+            && memcmp(type1->param, type2->param,(uint32)type1->param_count) == 0
+            && memcmp(type1->result, type2->result, (uint32)type1->result_count) == 0
+            )
+               ? true
+               : false;
+}
+
 bool
 load_type_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {

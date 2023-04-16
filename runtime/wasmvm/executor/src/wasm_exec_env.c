@@ -3,7 +3,7 @@
 #include "wasm_memory.h"
 
 WASMExecEnv *
-wasm_exec_env_create(WASMModuleInstance *module_inst)
+wasm_exec_env_create(WASMModule *module_inst)
 {
     uint64 total_size;
     WASMExecEnv *exec_env;

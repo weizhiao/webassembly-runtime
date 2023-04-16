@@ -520,7 +520,7 @@ TRUNC_FUNCTION(trunc_f64_to_i32, float64, uint32, int32)
 TRUNC_FUNCTION(trunc_f64_to_i64, float64, uint64, int64)
 
 static bool
-trunc_f32_to_int(WASMModuleInstance *module, uint32 *frame_sp, float32 src_min,
+trunc_f32_to_int(WASMModule *module, uint32 *frame_sp, float32 src_min,
                  float32 src_max, bool saturating, bool is_i32, bool is_sign)
 {
     float32 src_value = POP_F32();
@@ -556,7 +556,7 @@ trunc_f32_to_int(WASMModuleInstance *module, uint32 *frame_sp, float32 src_min,
 }
 
 static bool
-trunc_f64_to_int(WASMModuleInstance *module, uint32 *frame_sp, float64 src_min,
+trunc_f64_to_int(WASMModule *module, uint32 *frame_sp, float64 src_min,
                  float64 src_max, bool saturating, bool is_i32, bool is_sign)
 {
     float64 src_value = POP_F64();
@@ -804,7 +804,7 @@ get_global_addr(uint8 *global_data, WASMGlobal *global)
 }
 
 static void
-wasm_interp_call_func_bytecode(WASMModuleInstance *module,
+wasm_interp_call_func_bytecode(WASMModule *module,
                                WASMExecEnv *exec_env,
                                WASMFunction *function,
                                WASMFuncFrame *prev_frame)
@@ -2691,7 +2691,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 }
 
 void
-wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
+wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
                       WASMFunction *function, uint32 argc,
                       uint32 argv[])
 {

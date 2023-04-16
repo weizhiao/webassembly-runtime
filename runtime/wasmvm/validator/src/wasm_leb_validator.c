@@ -1,5 +1,4 @@
 #include "wasm_leb_validator.h"
-#include "runtime_check.h"
 
 static uint32 maxloopcount[] = {
     0, 0, 4, 0, 4, 9};

@@ -1831,6 +1831,8 @@ bool wasm_validator(WASMModule *module)
     WASMFunction *func;
     WASMGlobal *global, *globals;
 
+    module->module_stage = Validate;
+
     //     if (!check_memory_max_size(init_page_count,
     //                            max_page_count, error_buf,
     //                            error_buf_size)) {
@@ -1944,6 +1946,5 @@ bool wasm_validator(WASMModule *module)
     return true;
 fail:
     LOG_VERBOSE("Validate fail.\n");
-    wasm_module_destory(module, Validate);
     return false;
 }

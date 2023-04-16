@@ -111,7 +111,7 @@ invokeNative(void (*native_code)(), uint64 argv[], uint64 argc)
     {
         /* FIXME: If this happen, add more cases. */
         WASMExecEnv *exec_env = *(WASMExecEnv **)argv;
-        WASMModuleInstance *module_inst = exec_env->module_inst;
+        WASMModule *module_inst = exec_env->module_inst;
         wasm_set_exception(
             module_inst,
             "the argument number of native function exceeds maximum");
