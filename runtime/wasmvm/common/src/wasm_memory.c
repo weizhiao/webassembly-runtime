@@ -178,12 +178,28 @@ fail:
 
 void wasm_module_destory(WASMModule *module)
 {
-    uint32 i, table_count, memory_count;
+    uint32 i, table_count, memory_count, import_function_count, define_function_count;
     WASMModuleStage module_stage = module->module_stage;
     WASMType *type;
     WASMTable *table;
     WASMMemory *memory;
     WASMFunction *function;
+
+    table_count = module->table_count;
+    memory_count = module->memory_count;
+    import_function_count = module->import_function_count;
+
+    switch (module_stage)
+    {
+    case Execute:
+    case Instantiate:
+        define_function_count = module->function_count - import_function_count;
+        break;
+    case Validate:
+    case Load:
+        define_function_count = module->function_count;
+        break;
+    }
 
     if (!module)
         return;
@@ -192,9 +208,6 @@ void wasm_module_destory(WASMModule *module)
     {
     case Execute:
     case Instantiate:
-        table_count = module->table_count;
-        memory_count = module->memory_count;
-
         if (module->global_data)
         {
             wasm_runtime_free(module->global_data);
@@ -230,9 +243,12 @@ void wasm_module_destory(WASMModule *module)
             }
         }
     case Validate:
-        function = module->functions + module->import_function_count;
-        for (i = 0; i < module->function_count; i++, function++) {
-            if (function->branch_table) {
+        //清除跳转表
+        function = module->functions + import_function_count;
+        for (i = 0; i < define_function_count; i++, function++)
+        {
+            if (function->branch_table)
+            {
                 wasm_runtime_free(function->branch_table);
             }
         }
@@ -279,8 +295,8 @@ void wasm_module_destory(WASMModule *module)
         // 清除function
         if (module->functions)
         {
-            function = module->functions + module->import_function_count;
-            for (i = 0; i < module->function_count; i++, function++)
+            function = module->functions + import_function_count;
+            for (i = 0; i < define_function_count; i++, function++)
             {
                 if (function->local_offsets)
                 {

@@ -46,7 +46,7 @@ check_stack_pop(WASMModule *module, uint8 *frame_ref, int32 stack_cell_num, uint
     if ((is_32bit_type(type) && stack_cell_num < 1) || (is_64bit_type(type) && stack_cell_num < 2))
     {
         wasm_set_exception(module,
-                      "type mismatch: expect data but stack was empty");
+                           "type mismatch: expect data but stack was empty");
         return false;
     }
 
@@ -92,7 +92,7 @@ check_stack_and_return:
         if (ctx->max_stack_cell_num > UINT16_MAX)
         {
             wasm_set_exception(module,
-                          "operand stack depth limit exceeded");
+                               "operand stack depth limit exceeded");
             return false;
         }
     }
@@ -174,8 +174,8 @@ wasm_loader_pop_frame_csp(WASMModule *module, WASMLoaderContext *ctx)
     if (ctx->csp_num < 1)
     {
         wasm_set_exception(module,
-                      "type mismatch: "
-                      "expect data but block stack was empty");
+                           "type mismatch: "
+                           "expect data but block stack was empty");
         return false;
     }
 
@@ -300,35 +300,35 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
     return true;
 }
 
-#define TEMPLATE_PUSH(Type)                                             \
-    do                                                                  \
-    {                                                                   \
-        if (!(wasm_loader_push_frame_ref(module ,loader_ctx, VALUE_TYPE_##Type)))   \
-            goto fail;                                                  \
+#define TEMPLATE_PUSH(Type)                                                       \
+    do                                                                            \
+    {                                                                             \
+        if (!(wasm_loader_push_frame_ref(module, loader_ctx, VALUE_TYPE_##Type))) \
+            goto fail;                                                            \
     } while (0)
 
-#define TEMPLATE_POP(Type)                                             \
-    do                                                                 \
-    {                                                                  \
+#define TEMPLATE_POP(Type)                                                       \
+    do                                                                           \
+    {                                                                            \
         if (!(wasm_loader_pop_frame_ref(module, loader_ctx, VALUE_TYPE_##Type))) \
-            goto fail;                                                 \
+            goto fail;                                                           \
     } while (0)
 
-#define POP_AND_PUSH(type_pop, type_push)                              \
-    do                                                                 \
-    {                                                                  \
+#define POP_AND_PUSH(type_pop, type_push)                                      \
+    do                                                                         \
+    {                                                                          \
         if (!(wasm_loader_push_pop_frame_ref(module, loader_ctx, 1, type_push, \
-                                             type_pop)))         \
-            goto fail;                                                 \
+                                             type_pop)))                       \
+            goto fail;                                                         \
     } while (0)
 
 /* type of POPs should be the same */
-#define POP2_AND_PUSH(type_pop, type_push)                             \
-    do                                                                 \
-    {                                                                  \
+#define POP2_AND_PUSH(type_pop, type_push)                                     \
+    do                                                                         \
+    {                                                                          \
         if (!(wasm_loader_push_pop_frame_ref(module, loader_ctx, 2, type_push, \
-                                             type_pop)))         \
-            goto fail;                                                 \
+                                             type_pop)))                       \
+            goto fail;                                                         \
     } while (0)
 
 #define PUSH_I32() TEMPLATE_PUSH(I32)
@@ -347,18 +347,18 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
 #define POP_FUNCREF() TEMPLATE_POP(FUNCREF)
 #define POP_EXTERNREF() TEMPLATE_POP(EXTERNREF)
 
-#define PUSH_TYPE(type)                                               \
-    do                                                                \
-    {                                                                 \
-        if (!(wasm_loader_push_frame_ref(module, loader_ctx, type)))  \
-            goto fail;                                                \
-    } while (0)
-
-#define POP_TYPE(type)                                               \
+#define PUSH_TYPE(type)                                              \
     do                                                               \
     {                                                                \
-        if (!(wasm_loader_pop_frame_ref(module, loader_ctx, type)))  \
+        if (!(wasm_loader_push_frame_ref(module, loader_ctx, type))) \
             goto fail;                                               \
+    } while (0)
+
+#define POP_TYPE(type)                                              \
+    do                                                              \
+    {                                                               \
+        if (!(wasm_loader_pop_frame_ref(module, loader_ctx, type))) \
+            goto fail;                                              \
     } while (0)
 
 #define PUSH_CSP(label_type, block_type, _start_addr)                       \
@@ -369,19 +369,19 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
             goto fail;                                                      \
     } while (0)
 
-#define GET_LOCAL_INDEX_TYPE_AND_OFFSET()                              \
-    do                                                                 \
-    {                                                                  \
-        read_leb_uint32(p, p_end, local_idx);                          \
-        if (local_idx >= param_count + local_count)                    \
-        {                                                              \
-            wasm_set_exception(module, "unknown local"); \
-            goto fail;                                                 \
-        }                                                              \
-        local_type = local_idx < param_count                           \
-                         ? param_types[local_idx]                      \
-                         : local_types[local_idx - param_count];       \
-        local_offset = local_offsets[local_idx];                       \
+#define GET_LOCAL_INDEX_TYPE_AND_OFFSET()                        \
+    do                                                           \
+    {                                                            \
+        read_leb_uint32(p, p_end, local_idx);                    \
+        if (local_idx >= param_count + local_count)              \
+        {                                                        \
+            wasm_set_exception(module, "unknown local");         \
+            goto fail;                                           \
+        }                                                        \
+        local_type = local_idx < param_count                     \
+                         ? param_types[local_idx]                \
+                         : local_types[local_idx - param_count]; \
+        local_offset = local_offsets[local_idx];                 \
     } while (0)
 
 static bool
@@ -395,13 +395,12 @@ check_memory(WASMModule *module)
     return true;
 }
 
-#define CHECK_MEMORY()                                        \
-    do                                                        \
-    {                                                         \
-        if (!check_memory(module))                            \
-            goto fail;                                        \
+#define CHECK_MEMORY()             \
+    do                             \
+    {                              \
+        if (!check_memory(module)) \
+            goto fail;             \
     } while (0)
-
 
 static bool
 check_memory_access_align(WASMModule *module, uint8 opcode, uint32 align)
@@ -413,7 +412,7 @@ check_memory_access_align(WASMModule *module, uint8 opcode, uint32 align)
     if (align > mem_access_aligns[opcode - WASM_OP_I32_LOAD])
     {
         wasm_set_exception(module,
-                      "alignment must not be larger than natural");
+                           "alignment must not be larger than natural");
         return false;
     }
     return true;
@@ -478,8 +477,8 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
     if (loader_ctx->csp_num < depth + 1)
     {
         wasm_set_exception(module,
-                      "unknown label, "
-                      "unexpected end of section or function");
+                           "unknown label, "
+                           "unexpected end of section or function");
         return false;
     }
 
@@ -569,7 +568,7 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
     if (available_stack_cell != return_cell_num)
     {
         wasm_set_exception(module,
-                      "type mismatch: stack size does not match block type");
+                           "type mismatch: stack size does not match block type");
         goto fail;
     }
 
@@ -782,7 +781,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 if (type_index >= module->type_count)
                 {
                     wasm_set_exception(module,
-                                  "unknown type");
+                                       "unknown type");
                     goto fail;
                 }
                 block_type.is_value_type = false;
@@ -824,14 +823,14 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (loader_ctx->csp_num < 2 || cur_block->label_type != LABEL_TYPE_IF)
             {
                 wasm_set_exception(module,
-                    "opcode else found without matched opcode if");
+                                   "opcode else found without matched opcode if");
                 goto fail;
             }
 
             if (!check_block_stack(module, loader_ctx, loader_ctx->frame_csp - 1))
                 goto fail;
 
-            //针对if指令设置跳转表
+            // 针对if指令设置跳转表
             cur_block->else_addr = p;
             cur_block->branch_table_else_idx = loader_ctx->branch_table_num;
 
@@ -884,7 +883,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                                                                                          block_param_count)))
                 {
                     wasm_set_exception(module,
-                                  "type mismatch: else branch missing");
+                                       "type mismatch: else branch missing");
                     goto fail;
                 }
                 cur_block->else_addr = p - 1;
@@ -907,7 +906,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             {
 
                 wasm_set_exception(module,
-                              "section size mismatch");
+                                   "section size mismatch");
                 goto fail;
             }
 
@@ -1092,8 +1091,8 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (available_stack_cell <= 0 && !cur_block->is_stack_polymorphic)
             {
                 wasm_set_exception(module,
-                              "type mismatch, opcode drop was found "
-                              "but stack was empty");
+                                   "type mismatch, opcode drop was found "
+                                   "but stack was empty");
                 goto fail;
             }
 
@@ -1122,7 +1121,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 else
                 {
                     wasm_set_exception(module,
-                                  "type mismatch");
+                                       "type mismatch");
                     goto fail;
                 }
             }
@@ -1142,9 +1141,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (available_stack_cell <= 0 && !cur_block->is_stack_polymorphic)
             {
                 wasm_set_exception(module,
-                              "type mismatch or invalid result arity, "
-                              "opcode select was found "
-                              "but stack was empty");
+                                   "type mismatch or invalid result arity, "
+                                   "opcode select was found "
+                                   "but stack was empty");
                 goto fail;
             }
 
@@ -1168,7 +1167,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 default:
                 {
                     wasm_set_exception(module,
-                                  "type mismatch");
+                                       "type mismatch");
                     goto fail;
                 }
                 }
@@ -1296,7 +1295,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (!is_mutable)
             {
                 wasm_set_exception(module,
-                              "global is immutable");
+                                   "global is immutable");
                 goto fail;
             }
 
@@ -1403,7 +1402,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (*p++ != 0x00)
             {
                 wasm_set_exception(module,
-                              "zero byte expected");
+                                   "zero byte expected");
                 goto fail;
             }
             PUSH_I32();
@@ -1416,7 +1415,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (*p++ != 0x00)
             {
                 wasm_set_exception(module,
-                              "zero byte expected");
+                                   "zero byte expected");
                 goto fail;
             }
             POP_AND_PUSH(VALUE_TYPE_I32, VALUE_TYPE_I32);
@@ -1707,7 +1706,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 if (data_seg_idx >= module->data_seg_count)
                 {
                     wasm_set_exception(module,
-                                    "unknown data segment");
+                                       "unknown data segment");
                     goto fail;
                 }
 
@@ -1725,7 +1724,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 if (data_seg_idx >= module->data_seg_count)
                 {
                     wasm_set_exception(module,
-                                  "unknown data segment");
+                                       "unknown data segment");
                     goto fail;
                 }
 
@@ -1766,16 +1765,16 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             }
             fail_zero_byte_expected:
                 wasm_set_exception(module,
-                              "zero byte expected");
+                                   "zero byte expected");
                 goto fail;
 
             fail_unknown_memory:
                 wasm_set_exception(module,
-                              "unknown memory 0");
+                                   "unknown memory 0");
                 goto fail;
             fail_data_cnt_sec_require:
                 wasm_set_exception(module,
-                              "data count section required");
+                                   "data count section required");
                 goto fail;
 #endif /* WASM_ENABLE_BULK_MEMORY */
 
@@ -1801,8 +1800,8 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             /* Function with missing end marker
                (at EOF or end of code sections) */
             wasm_set_exception(module,
-                          "unexpected end of section or function, "
-                          "or section size mismatch");
+                               "unexpected end of section or function, "
+                               "or section size mismatch");
         goto fail;
     }
 
@@ -1826,80 +1825,70 @@ fail:
 
 bool wasm_validator(WASMModule *module)
 {
-    uint32 i;
+    uint32 i, j, index, str_len;
     WASMTable *table;
+    char *name;
     WASMFunction *func;
     WASMGlobal *global, *globals;
+    WASMExport *export;
 
     module->module_stage = Validate;
 
-    //     if (!check_memory_max_size(init_page_count,
-    //                            max_page_count, error_buf,
-    //                            error_buf_size)) {
-    //     return false;
-    // }
+    export = module->exports;
+    for (i = 0; i < module->export_count; i++, export ++)
+    {
+        index = export->index;
+        switch (export->kind)
+        {
+        /* function index */
+        case EXPORT_KIND_FUNC:
+            if (index >= module->function_count + module->import_function_count)
+            {
+                wasm_set_exception(module, "unknown function");
+                return false;
+            }
+            break;
+        case EXPORT_KIND_TABLE:
+            if (index >= module->table_count + module->import_table_count)
+            {
+                wasm_set_exception(module, "unknown table");
+                return false;
+            }
+            break;
+        /* memory index */
+        case EXPORT_KIND_MEMORY:
+            if (index >= module->memory_count + module->import_memory_count)
+            {
+                wasm_set_exception(module, "unknown memory");
+                return false;
+            }
+            break;
+        /* global index */
+        case EXPORT_KIND_GLOBAL:
+            if (index >= module->global_count + module->import_global_count)
+            {
+                wasm_set_exception(module, "unknown global");
+                return false;
+            }
+            break;
+        default:
+            wasm_set_exception(module, "invalid export kind");
+            return false;
+        }
 
-    // 检查table的正确性
-    //  if (!check_table_max_size(table->cur_size, table->max_size, error_buf,
-    //                                error_buf_size))
-    //  return false;
+        str_len = strlen(export->name);
 
-    //     for (j = 0; j < i; j++) {
-    //     name = module->exports[j].name;
-    //     if (strlen(name) == str_len && memcmp(name, p, str_len) == 0) {
-    //         wasm_set_exception(module,
-    //                       "duplicate export name");
-    //         return false;
-    //     }
-    // }
-
-    // switch (export->kind) {
-    //                 /* function index */
-    //                 case EXPORT_KIND_FUNC:
-    //                     if (index >= module->function_count
-    //                                      + module->import_function_count) {
-    //                         wasm_set_exception(module,
-    //                                       "unknown function");
-    //                         return false;
-    //                     }
-    //                     break;
-    //                 case EXPORT_KIND_TABLE:
-    //                     if (index
-    //                         >= module->table_count + module->import_table_count) {
-    //                         wasm_set_exception(module,
-    //                                       "unknown table");
-    //                         return false;
-    //                     }
-    //                     break;
-    //                 /* memory index */
-    //                 case EXPORT_KIND_MEMORY:
-    //                     if (index
-    //                         >= module->memory_count + module->import_memory_count) {
-    //                         wasm_set_exception(module,
-    //                                       "unknown memory");
-    //                         return false;
-    //                     }
-    //                     break;
-    //                 /* global index */
-    //                 case EXPORT_KIND_GLOBAL:
-    //                     if (index
-    //                         >= module->global_count + module->import_global_count) {
-    //                         wasm_set_exception(module,
-    //                                       "unknown global");
-    //                         return false;
-    //                     }
-    //                     break;
-    //                 default:
-    //                     wasm_set_exception(module,
-    //                                   "invalid export kind");
-    //                     return false;
-    //             }
-
-    // 函数type验证
-    //  if (type_index >= module->type_count) {
-    //      wasm_set_exception(module, "unknown type");
-    //      return false;
-    //  }
+        // 检查是否重复导出
+        for (j = 0; j < i; j++)
+        {
+            name = module->exports[j].name;
+            if (strlen(name) == str_len && memcmp(name, export->name, str_len) == 0)
+            {
+                wasm_set_exception(module, "duplicate export name");
+                return false;
+            }
+        }
+    }
 
     globals = module->globals;
     global = module->globals + module->import_global_count;

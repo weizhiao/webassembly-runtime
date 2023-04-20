@@ -423,7 +423,7 @@ wasm_native_resolve_symbol(const char *module_name, const char *field_name,
         node = node_next;
     }
 
-    if (!func_type || !check_symbol_signature(func_type, signature))
+    if (!check_symbol_signature(func_type, signature))
     {
         return NULL;
     }

@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
     uint32 ns_lookup_pool_size = 0;
     unsigned ret_size;
     bool is_repl_mode = false;
-    int log_verbose_level = 4;
+    int log_verbose_level = 2;
     char *wasm_file = NULL;
     uint32 value_stack_size = 64 * 1024;
     uint32 exectution_stack_size = 1024;

@@ -25,11 +25,11 @@ functions_instantiate(WASMModule *module)
         if (linked_func) {
             func->func_kind = Native_Func;
             func->func_ptr = linked_func;
+            func->signature = linked_signature;
         }
         else{
             goto fail;
         }
-        func->signature = linked_signature;
     }
 
     module->function_count = sum_function_count;

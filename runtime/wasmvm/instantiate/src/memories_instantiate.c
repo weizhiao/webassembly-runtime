@@ -1,25 +1,23 @@
 #include "instantiate.h"
 
-bool
-memory_instantiate(WASMMemory *memory)
+bool memory_instantiate(WASMMemory *memory)
 {
     uint32 num_bytes_per_page, init_page_count, max_page_count;
     uint64 memory_data_size;
-
 
     max_page_count = memory->max_page_count;
     num_bytes_per_page = memory->num_bytes_per_page;
     init_page_count = memory->cur_page_count;
 
-    if(max_page_count == (uint32)-1){
+    if (max_page_count == (uint32)-1)
+    {
         max_page_count = DEFAULT_MAX_PAGES;
         memory->max_page_count = max_page_count;
     }
 
-
     memory_data_size = (uint64)num_bytes_per_page * init_page_count;
-    if (memory_data_size > 0
-        && !(memory->memory_data = wasm_runtime_malloc(memory_data_size))) {
+    if (memory_data_size > 0 && !(memory->memory_data = wasm_runtime_malloc(memory_data_size)))
+    {
         goto fail;
     }
 
@@ -32,11 +30,10 @@ fail:
     return false;
 }
 
-bool
-memories_instantiate(WASMModule *module)
+bool memories_instantiate(WASMModule *module)
 {
     uint32 i, base_offset, length,
-           memory_count = module->import_memory_count + module->memory_count;
+        memory_count = module->import_memory_count + module->memory_count;
     WASMMemory *memory, *memories;
     WASMDataSeg *data_seg;
     WASMGlobal *globals;
@@ -44,18 +41,19 @@ memories_instantiate(WASMModule *module)
     globals = module->globals;
     memory = memories = module->memories;
 
-    for (i = 0; i < memory_count; i++, memory++) {
-            if (!memory_instantiate(memory)) {
-                //memories_deinstantiate(memory, memory_count);
-                goto fail;
-            }
+    for (i = 0; i < memory_count; i++, memory++)
+    {
+        if (!memory_instantiate(memory))
+        {
+            goto fail;
+        }
     }
 
     module->memory_count = memory_count;
     data_seg = module->data_segments;
 
-    /* Initialize the memory data with data segment section */
-    for (i = 0; i < module->data_seg_count; i++, data_seg++) {
+    for (i = 0; i < module->data_seg_count; i++, data_seg++)
+    {
         memory = memories + data_seg->memory_index;
         uint8 *memory_data = NULL;
         uint32 memory_size = 0;
@@ -63,43 +61,47 @@ memories_instantiate(WASMModule *module)
         memory_data = memory->memory_data;
         memory_size = memory->num_bytes_per_page * memory->cur_page_count;
 
-        if (data_seg->base_offset.init_expr_type == INIT_EXPR_TYPE_GET_GLOBAL) {
+        if (data_seg->base_offset.init_expr_type == INIT_EXPR_TYPE_GET_GLOBAL)
+        {
 
-            if (!globals
-                || globals[data_seg->base_offset.u.global_index].type
-                       != VALUE_TYPE_I32) {
+            if (!globals || globals[data_seg->base_offset.u.global_index].type != VALUE_TYPE_I32)
+            {
                 wasm_set_exception(module,
-                              "data segment does not fit");
+                                   "data segment does not fit");
                 goto fail;
             }
 
             base_offset =
                 globals[data_seg->base_offset.u.global_index].initial_value.i32;
         }
-        else {
+        else
+        {
             base_offset = (uint32)data_seg->base_offset.u.i32;
         }
 
         /* check offset */
-        if (base_offset > memory_size) {
+        if (base_offset > memory_size)
+        {
             LOG_DEBUG("base_offset(%d) > memory_size(%d)", base_offset,
                       memory_size);
             wasm_set_exception(module,
-                          "data segment does not fit");
+                               "data segment does not fit");
             goto fail;
         }
 
         /* check offset + length(could be zero) */
         length = data_seg->data_length;
-        if (base_offset + length > memory_size) {
+        if (base_offset + length > memory_size)
+        {
             LOG_DEBUG("base_offset(%d) + length(%d) > memory_size(%d)",
                       base_offset, length, memory_size);
             wasm_set_exception(module,
-                          "data segment does not fit");
+                               "data segment does not fit");
             goto fail;
         }
 
-        if (memory_data) {
+        if (memory_data)
+        {
             memcpy(memory_data + base_offset, data_seg->data, length);
         }
     }

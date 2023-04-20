@@ -18,7 +18,6 @@ wasm_instantiate(WASMModule *module, uint32 value_stack_size, uint32 execution_s
         goto fail;
     }
 
-
     /* Initialize the thread related data */
     if (value_stack_size == 0)
         value_stack_size = DEFAULT_VALUE_STACK_SIZE;
