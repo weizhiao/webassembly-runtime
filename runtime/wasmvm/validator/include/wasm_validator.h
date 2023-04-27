@@ -5,10 +5,6 @@
 
 typedef struct BlockType
 {
-    /* Block type may be expressed in one of two forms:
-     * either by the type of the single return value or
-     * by a type index of module.
-     */
     union
     {
         uint8 value_type;
@@ -24,7 +20,10 @@ typedef struct BranchBlock
     uint8 *start_addr;
     uint8 *else_addr;
     uint8 *end_addr;
+    // 以4字节为单位的计数
     uint32 stack_cell_num;
+    // 以数量为单位的计数
+    uint32 stack_num;
 
     uint32 *table_queue;
     uint32 *table_queue_bottom;
@@ -44,6 +43,8 @@ typedef struct WASMLoaderContext
     uint32 frame_ref_size;
     uint32 stack_cell_num;
     uint32 max_stack_cell_num;
+    uint32 stack_num;
+    uint32 max_stack_num;
 
     /* frame csp stack */
     BranchBlock *frame_csp;

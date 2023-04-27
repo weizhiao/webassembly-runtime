@@ -5,7 +5,6 @@
 #include "wasm_leb_validator.h"
 #include "wasm_exception.h"
 
-#define REF_ANY VALUE_TYPE_ANY
 #define REF_I32 VALUE_TYPE_I32
 #define REF_F32 VALUE_TYPE_F32
 #define REF_I64_1 VALUE_TYPE_I64
@@ -33,40 +32,21 @@ is_64bit_type(uint8 type)
     return false;
 }
 
-static bool
-check_stack_pop(WASMModule *module, uint8 *frame_ref, int32 stack_cell_num, uint8 type)
-{
-
-    if (stack_cell_num > 0 && *(frame_ref - 1) == VALUE_TYPE_ANY)
-    {
-        /* the stack top is a value of any type, return success */
-        return true;
-    }
-
-    if ((is_32bit_type(type) && stack_cell_num < 1) || (is_64bit_type(type) && stack_cell_num < 2))
-    {
-        wasm_set_exception(module,
-                           "type mismatch: expect data but stack was empty");
-        return false;
-    }
-
-    if ((is_32bit_type(type) && *(frame_ref - 1) != type) || (is_64bit_type(type) && (*(frame_ref - 2) != type || *(frame_ref - 1) != type)))
-    {
-        wasm_set_exception(module, "type mismatch");
-        return false;
-    }
-
-    return true;
-}
+#define CHECK_STACK_POP(cur_type, expect_type)           \
+    do                                                   \
+    {                                                    \
+        if (cur_type != expect_type)                     \
+        {                                                \
+            wasm_set_exception(module, "type mismatch"); \
+            return false;                                \
+        }                                                \
+    } while (0)
 
 static bool
 wasm_loader_push_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 type)
 {
-    if (type == VALUE_TYPE_VOID)
-        return true;
-
     // 如果空间不够会增加16个位置
-    if (ctx->stack_cell_num == ctx->frame_ref_size)
+    if (ctx->stack_num == ctx->frame_ref_size)
     {
         ctx->frame_ref_bottom = wasm_runtime_realloc(ctx->frame_ref_bottom, ctx->frame_ref_size + 16);
         if (!ctx->frame_ref_bottom)
@@ -78,23 +58,17 @@ wasm_loader_push_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 typ
     }
 
     *ctx->frame_ref++ = type;
-    ctx->stack_cell_num++;
-    if (is_32bit_type(type) || type == VALUE_TYPE_ANY)
-        goto check_stack_and_return;
+    // 增加个数,即使为void
+    ctx->stack_num++;
+    ctx->stack_cell_num += wasm_value_type_cell_num(type);
 
-    *ctx->frame_ref++ = type;
-    ctx->stack_cell_num++;
-
-check_stack_and_return:
+    if (ctx->stack_num > ctx->max_stack_num)
+    {
+        ctx->max_stack_num++;
+    }
     if (ctx->stack_cell_num > ctx->max_stack_cell_num)
     {
         ctx->max_stack_cell_num = ctx->stack_cell_num;
-        if (ctx->max_stack_cell_num > UINT16_MAX)
-        {
-            wasm_set_exception(module,
-                               "operand stack depth limit exceeded");
-            return false;
-        }
     }
     return true;
 }
@@ -103,26 +77,25 @@ static bool
 wasm_loader_pop_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 type)
 {
     BranchBlock *cur_block = ctx->frame_csp - 1;
-    int32 available_stack_cell =
-        (int32)(ctx->stack_cell_num - cur_block->stack_cell_num);
+    uint8 *frame_ref = ctx->frame_ref - 1;
+    int32 available_stack_num =
+        (int32)(ctx->stack_num - cur_block->stack_num);
 
-    if (available_stack_cell <= 0 && cur_block->is_stack_polymorphic)
+    if (available_stack_num <= 0 && cur_block->is_stack_polymorphic)
         return true;
 
-    if (type == VALUE_TYPE_VOID)
-        return true;
-
-    if (!check_stack_pop(module, ctx->frame_ref, available_stack_cell, type))
+    if (available_stack_num <= 0)
+    {
+        wasm_set_exception(module, "type mismatch");
         return false;
+    }
+
+    CHECK_STACK_POP(*frame_ref, type);
 
     ctx->frame_ref--;
-    ctx->stack_cell_num--;
-
-    if (is_32bit_type(type) || *ctx->frame_ref == VALUE_TYPE_ANY)
-        return true;
-
-    ctx->frame_ref--;
-    ctx->stack_cell_num--;
+    // 减少个数
+    ctx->stack_num--;
+    ctx->stack_cell_num -= wasm_value_type_cell_num(type);
 
     return true;
 }
@@ -148,6 +121,7 @@ wasm_loader_push_frame_csp(WASMLoaderContext *ctx, uint8 label_type,
     frame_csp->label_type = label_type;
     frame_csp->block_type = block_type;
     frame_csp->start_addr = start_addr;
+    frame_csp->stack_num = ctx->stack_num;
     frame_csp->else_addr = NULL;
     frame_csp->end_addr = NULL;
     frame_csp->stack_cell_num = ctx->stack_cell_num;
@@ -162,6 +136,10 @@ wasm_loader_push_frame_csp(WASMLoaderContext *ctx, uint8 label_type,
 
     ctx->frame_csp++;
     ctx->csp_num++;
+    if (ctx->csp_num > ctx->max_csp_num)
+    {
+        ctx->max_csp_num++;
+    }
     return true;
 }
 
@@ -314,23 +292,6 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
             goto fail;                                                           \
     } while (0)
 
-#define POP_AND_PUSH(type_pop, type_push)                                      \
-    do                                                                         \
-    {                                                                          \
-        if (!(wasm_loader_push_pop_frame_ref(module, loader_ctx, 1, type_push, \
-                                             type_pop)))                       \
-            goto fail;                                                         \
-    } while (0)
-
-/* type of POPs should be the same */
-#define POP2_AND_PUSH(type_pop, type_push)                                     \
-    do                                                                         \
-    {                                                                          \
-        if (!(wasm_loader_push_pop_frame_ref(module, loader_ctx, 2, type_push, \
-                                             type_pop)))                       \
-            goto fail;                                                         \
-    } while (0)
-
 #define PUSH_I32() TEMPLATE_PUSH(I32)
 #define PUSH_F32() TEMPLATE_PUSH(F32)
 #define PUSH_I64() TEMPLATE_PUSH(I64)
@@ -367,6 +328,22 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
         if (!wasm_loader_push_frame_csp(loader_ctx, label_type, block_type, \
                                         _start_addr))                       \
             goto fail;                                                      \
+    } while (0)
+
+#define POP_AND_PUSH(type_pop, type_push) \
+    do                                    \
+    {                                     \
+        POP_TYPE(type_pop);               \
+        PUSH_TYPE(type_push);             \
+    } while (0)
+
+/* type of POPs should be the same */
+#define POP2_AND_PUSH(type_pop, type_push) \
+    do                                     \
+    {                                      \
+        POP_TYPE(type_pop);                \
+        POP_TYPE(type_pop);                \
+        PUSH_TYPE(type_push);              \
     } while (0)
 
 #define GET_LOCAL_INDEX_TYPE_AND_OFFSET()                        \
@@ -471,7 +448,7 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
     BlockType *target_block_type;
     uint8 *types = NULL, *frame_ref;
     uint32 arity = 0;
-    int32 i, available_stack_cell;
+    int32 i, available_stack_num;
     uint16 cell_num;
 
     if (loader_ctx->csp_num < depth + 1)
@@ -485,7 +462,7 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
     cur_block = loader_ctx->frame_csp - 1;
     target_block = loader_ctx->frame_csp - (depth + 1);
     target_block_type = &target_block->block_type;
-    frame_ref = loader_ctx->frame_ref;
+    frame_ref = loader_ctx->frame_ref - 1;
 
     // 对于loop需要特殊处理
     if (target_block->label_type == LABEL_TYPE_LOOP)
@@ -506,17 +483,19 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
         return true;
     }
 
-    available_stack_cell =
-        (int32)(loader_ctx->stack_cell_num - cur_block->stack_cell_num);
+    available_stack_num = (int32)(loader_ctx->stack_num - cur_block->stack_num);
+
+    if (available_stack_num != arity)
+    {
+        wasm_set_exception(module, "type mismatch");
+        return false;
+    }
 
     /* Check stack top values match target block type */
     for (i = (int32)arity - 1; i >= 0; i--)
     {
-        if (!check_stack_pop(module, frame_ref, available_stack_cell, types[i]))
-            return false;
-        cell_num = wasm_value_type_cell_num(types[i]);
-        frame_ref -= cell_num;
-        available_stack_cell -= cell_num;
+        CHECK_STACK_POP(*frame_ref, types[i]);
+        frame_ref--;
     }
 
     return true;
@@ -531,15 +510,12 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
     BlockType *block_type = &block->block_type;
     uint8 *return_types = NULL;
     uint32 return_count = 0;
-    int32 available_stack_cell, return_cell_num, i;
+    int32 available_stack_num, i;
     uint8 *frame_ref = NULL;
 
-    available_stack_cell =
-        (int32)(loader_ctx->stack_cell_num - block->stack_cell_num);
+    available_stack_num = (int32)(loader_ctx->stack_num - block->stack_num);
 
     return_count = block_type_get_result_types(block_type, &return_types);
-    return_cell_num =
-        return_count > 0 ? wasm_get_cell_num(return_types, return_count) : 0;
 
     if (block->is_stack_polymorphic)
     {
@@ -554,7 +530,7 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
             wasm_set_exception(
                 module,
                 "type mismatch: stack size does not match block type");
-            goto fail;
+            return false;
         }
 
         for (i = 0; i < (int32)return_count; i++)
@@ -564,39 +540,35 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
         return true;
     }
 
-    /* Check stack cell num equals return cell num */
-    if (available_stack_cell != return_cell_num)
+    if (available_stack_num != return_count)
     {
         wasm_set_exception(module,
                            "type mismatch: stack size does not match block type");
-        goto fail;
+        return false;
     }
 
     /* Check stack values match return types */
-    frame_ref = loader_ctx->frame_ref;
+    frame_ref = loader_ctx->frame_ref - 1;
     for (i = (int32)return_count - 1; i >= 0; i--)
     {
-        if (!check_stack_pop(module, frame_ref, available_stack_cell,
-                             return_types[i]))
-            return false;
-        frame_ref -= wasm_value_type_cell_num(return_types[i]);
-        available_stack_cell -= wasm_value_type_cell_num(return_types[i]);
+        CHECK_STACK_POP(*frame_ref, return_types[i]);
+        frame_ref--;
     }
 
     return true;
-
 fail:
     return false;
 }
 
 /* reset the stack to the state of before entering the last block */
-#define RESET_STACK()                                                  \
-    do                                                                 \
-    {                                                                  \
-        loader_ctx->stack_cell_num =                                   \
-            (loader_ctx->frame_csp - 1)->stack_cell_num;               \
-        loader_ctx->frame_ref =                                        \
-            loader_ctx->frame_ref_bottom + loader_ctx->stack_cell_num; \
+#define RESET_STACK()                                             \
+    do                                                            \
+    {                                                             \
+        BranchBlock *_frame_csp = loader_ctx->frame_csp - 1;      \
+        loader_ctx->stack_cell_num = _frame_csp->stack_cell_num;  \
+        loader_ctx->stack_num = _frame_csp->stack_num;            \
+        loader_ctx->frame_ref =                                   \
+            loader_ctx->frame_ref_bottom + loader_ctx->stack_num; \
     } while (0)
 
 /* set current block's stack polymorphic state */
@@ -666,6 +638,8 @@ wasm_loader_ctx_init()
         return NULL;
 
     // 初始化数值栈
+    loader_ctx->stack_num = 0;
+    loader_ctx->max_stack_num = 0;
     loader_ctx->stack_cell_num = 0;
     loader_ctx->max_stack_cell_num = 0;
     loader_ctx->frame_ref_size = 32;
@@ -675,6 +649,7 @@ wasm_loader_ctx_init()
 
     // 初始化控制栈
     loader_ctx->csp_num = 0;
+    loader_ctx->max_csp_num = 0;
     loader_ctx->frame_csp_size = 8;
     if (!(loader_ctx->frame_csp_bottom = loader_ctx->frame_csp = wasm_runtime_malloc(
               8 * sizeof(BranchBlock))))
@@ -690,20 +665,6 @@ wasm_loader_ctx_init()
 fail:
     wasm_loader_ctx_destroy(loader_ctx);
     return NULL;
-}
-
-static bool
-wasm_loader_push_pop_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 pop_cnt,
-                               uint8 type_push, uint8 type_pop)
-{
-    for (int i = 0; i < pop_cnt; i++)
-    {
-        if (!wasm_loader_pop_frame_ref(module, ctx, type_pop))
-            return false;
-    }
-    if (!wasm_loader_push_frame_ref(module, ctx, type_push))
-        return false;
-    return true;
 }
 
 bool wasm_validator_code(WASMModule *module, WASMFunction *func,
@@ -1084,100 +1045,27 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
 
         case WASM_OP_DROP:
         {
-            BranchBlock *cur_block = loader_ctx->frame_csp - 1;
-            int32 available_stack_cell =
-                (int32)(loader_ctx->stack_cell_num - cur_block->stack_cell_num);
-
-            if (available_stack_cell <= 0 && !cur_block->is_stack_polymorphic)
+            uint8 type = *(loader_ctx->frame_ref - 1);
+            POP_TYPE(type);
+            if (is_64bit_type(type))
             {
-                wasm_set_exception(module,
-                                   "type mismatch, opcode drop was found "
-                                   "but stack was empty");
-                goto fail;
-            }
-
-            if (available_stack_cell > 0)
-            {
-                if (is_32bit_type(*(loader_ctx->frame_ref - 1)))
-                {
-                    loader_ctx->frame_ref--;
-                    loader_ctx->stack_cell_num--;
-                }
-                else if (is_64bit_type(*(loader_ctx->frame_ref - 1)))
-                {
-                    loader_ctx->frame_ref -= 2;
-                    loader_ctx->stack_cell_num -= 2;
-                    *(p - 1) = WASM_OP_DROP_64;
-                }
-#if WASM_ENABLE_SIMD != 0
-#if (WASM_ENABLE_WAMR_COMPILER != 0) || (WASM_ENABLE_JIT != 0)
-                else if (*(loader_ctx->frame_ref - 1) == REF_V128_1)
-                {
-                    loader_ctx->frame_ref -= 4;
-                    loader_ctx->stack_cell_num -= 4;
-                }
-#endif
-#endif
-                else
-                {
-                    wasm_set_exception(module,
-                                       "type mismatch");
-                    goto fail;
-                }
+                *(p - 1) = WASM_OP_DROP_64;
             }
             break;
         }
 
         case WASM_OP_SELECT:
         {
-            uint8 ref_type;
-            BranchBlock *cur_block = loader_ctx->frame_csp - 1;
-            int32 available_stack_cell;
+            uint8 type;
 
             POP_I32();
 
-            available_stack_cell = (int32)(loader_ctx->stack_cell_num - cur_block->stack_cell_num);
+            type = *(loader_ctx->frame_ref - 1);
+            POP2_AND_PUSH(type, type);
 
-            if (available_stack_cell <= 0 && !cur_block->is_stack_polymorphic)
+            if (is_64bit_type(type))
             {
-                wasm_set_exception(module,
-                                   "type mismatch or invalid result arity, "
-                                   "opcode select was found "
-                                   "but stack was empty");
-                goto fail;
-            }
-
-            if (available_stack_cell > 0)
-            {
-                switch (*(loader_ctx->frame_ref - 1))
-                {
-                case REF_I32:
-                case REF_F32:
-                    break;
-                case REF_I64_2:
-                case REF_F64_2:
-                    *(p - 1) = WASM_OP_SELECT_64;
-                    break;
-#if WASM_ENABLE_SIMD != 0
-#if (WASM_ENABLE_WAMR_COMPILER != 0) || (WASM_ENABLE_JIT != 0)
-                case REF_V128_4:
-                    break;
-#endif /* (WASM_ENABLE_WAMR_COMPILER != 0) || (WASM_ENABLE_JIT != 0) */
-#endif /* WASM_ENABLE_SIMD != 0 */
-                default:
-                {
-                    wasm_set_exception(module,
-                                       "type mismatch");
-                    goto fail;
-                }
-                }
-
-                ref_type = *(loader_ctx->frame_ref - 1);
-                POP2_AND_PUSH(ref_type, ref_type);
-            }
-            else
-            {
-                PUSH_TYPE(VALUE_TYPE_ANY);
+                *(p - 1) = WASM_OP_SELECT_64;
             }
             break;
         }
@@ -1807,6 +1695,8 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
 
     func->branch_table = loader_ctx->branch_table_bottom;
     func->max_stack_cell_num = loader_ctx->max_stack_cell_num;
+    func->max_block_num = loader_ctx->max_csp_num;
+    func->max_stack_num = loader_ctx->max_stack_num;
     return true;
 
 fail:
