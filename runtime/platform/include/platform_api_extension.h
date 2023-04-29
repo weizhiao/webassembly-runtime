@@ -25,12 +25,64 @@
  * 2. To build the app-mgr and app-framework, you must implement it
  */
 
+/**
+ * Creates a thread
+ *
+ * @param p_tid  [OUTPUT] the pointer of tid
+ * @param start  main routine of the thread
+ * @param arg  argument passed to main routine
+ * @param stack_size  bytes of stack size
+ *
+ * @return 0 if success.
+ */
+int os_thread_create(korp_tid *p_tid, thread_start_routine_t start, void *arg,
+                     unsigned int stack_size);
+
+/**
+ * Creates a thread with priority
+ *
+ * @param p_tid  [OUTPUT] the pointer of tid
+ * @param start  main routine of the thread
+ * @param arg  argument passed to main routine
+ * @param stack_size  bytes of stack size
+ * @param prio the priority
+ *
+ * @return 0 if success.
+ */
+int os_thread_create_with_prio(korp_tid *p_tid, thread_start_routine_t start,
+                               void *arg, unsigned int stack_size, int prio);
+
+/**
+ * Waits for the thread specified by thread to terminate
+ *
+ * @param thread the thread to wait
+ * @param retval if not NULL, output the exit status of the terminated thread
+ *
+ * @return return 0 if success
+ */
+int os_thread_join(korp_tid thread, void **retval);
+
+/**
+ * Detach the thread specified by thread
+ *
+ * @param thread the thread to detach
+ *
+ * @return return 0 if success
+ */
+int os_thread_detach(korp_tid);
+
+/**
+ * Exit current thread
+ *
+ * @param retval the return value of the current thread
+ */
+void os_thread_exit(void *retval);
+
 /* Try to define os_atomic_thread_fence if it isn't defined in
    platform's platform_internal.h */
 #ifndef os_atomic_thread_fence
 
-#if !defined(__GNUC_PREREQ) && (defined(__GNUC__) || defined(__GNUG__)) \
-    && !defined(__clang__) && defined(__GNUC_MINOR__)
+#if !defined(__GNUC_PREREQ) && (defined(__GNUC__) || defined(__GNUG__)) && !defined(__clang__) && defined(__GNUC_MINOR__)
 #define __GNUC_PREREQ(maj, min) \
     ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((maj) << 16) + (min))
 #endif
@@ -66,20 +118,17 @@
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_thread_env_init(void);
+int os_thread_env_init(void);
 
 /**
  * Destroy current thread environment
  */
-void
-os_thread_env_destroy(void);
+void os_thread_env_destroy(void);
 
 /**
  * Whether the thread environment is initialized
  */
-bool
-os_thread_env_inited(void);
+bool os_thread_env_inited(void);
 
 /**
  * Suspend execution of the calling thread for (at least)
@@ -87,8 +136,7 @@ os_thread_env_inited(void);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_usleep(uint32 usec);
+int os_usleep(uint32 usec);
 
 /**
  * This function creates a condition variable
@@ -97,8 +145,7 @@ os_usleep(uint32 usec);
  *
  * @return 0 if success
  */
-int
-os_cond_init(korp_cond *cond);
+int os_cond_init(korp_cond *cond);
 
 /**
  * This function destroys condition variable
@@ -107,8 +154,7 @@ os_cond_init(korp_cond *cond);
  *
  * @return 0 if success
  */
-int
-os_cond_destroy(korp_cond *cond);
+int os_cond_destroy(korp_cond *cond);
 
 /**
  * Wait a condition variable.
@@ -118,8 +164,7 @@ os_cond_destroy(korp_cond *cond);
  *
  * @return 0 if success
  */
-int
-os_cond_wait(korp_cond *cond, korp_mutex *mutex);
+int os_cond_wait(korp_cond *cond, korp_mutex *mutex);
 
 /**
  * Wait a condition varible or return if time specified passes.
@@ -130,8 +175,7 @@ os_cond_wait(korp_cond *cond, korp_mutex *mutex);
  *
  * @return 0 if success
  */
-int
-os_cond_reltimedwait(korp_cond *cond, korp_mutex *mutex, uint64 useconds);
+int os_cond_reltimedwait(korp_cond *cond, korp_mutex *mutex, uint64 useconds);
 
 /**
  * Signals the condition variable
@@ -140,8 +184,7 @@ os_cond_reltimedwait(korp_cond *cond, korp_mutex *mutex, uint64 useconds);
  *
  * @return 0 if success
  */
-int
-os_cond_signal(korp_cond *cond);
+int os_cond_signal(korp_cond *cond);
 
 /**
  * Broadcast the condition variable
@@ -150,8 +193,7 @@ os_cond_signal(korp_cond *cond);
  *
  * @return 0 if success
  */
-int
-os_cond_broadcast(korp_cond *cond);
+int os_cond_broadcast(korp_cond *cond);
 
 /****************************************************
  *                     Section 2                    *
@@ -165,13 +207,15 @@ os_cond_broadcast(korp_cond *cond);
  * need to implement these APIs
  */
 
-typedef union {
+typedef union
+{
     uint32 ipv4;
     uint16 ipv6[8];
     uint8 data[1];
 } bh_ip_addr_buffer_t;
 
-typedef struct {
+typedef struct
+{
     bh_ip_addr_buffer_t addr_bufer;
     uint16 port;
     bool is_ipv4;
@@ -186,8 +230,7 @@ typedef struct {
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_create(bh_socket_t *sock, bool is_ipv4, bool is_tcp);
+int os_socket_create(bh_socket_t *sock, bool is_ipv4, bool is_tcp);
 
 /**
  * Assign the address and port to the socket
@@ -200,8 +243,7 @@ os_socket_create(bh_socket_t *sock, bool is_ipv4, bool is_tcp);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_bind(bh_socket_t socket, const char *addr, int *port);
+int os_socket_bind(bh_socket_t socket, const char *addr, int *port);
 
 /**
  * Set timeout for the given socket
@@ -211,8 +253,7 @@ os_socket_bind(bh_socket_t socket, const char *addr, int *port);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_settimeout(bh_socket_t socket, uint64 timeout_us);
+int os_socket_settimeout(bh_socket_t socket, uint64 timeout_us);
 
 /**
  * Make the socket as a passive socket to accept incoming connection requests
@@ -222,8 +263,7 @@ os_socket_settimeout(bh_socket_t socket, uint64 timeout_us);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_listen(bh_socket_t socket, int max_client);
+int os_socket_listen(bh_socket_t socket, int max_client);
 
 /**
  * Accept an incoming connection
@@ -238,9 +278,8 @@ os_socket_listen(bh_socket_t socket, int max_client);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_accept(bh_socket_t server_sock, bh_socket_t *sock, void *addr,
-                 unsigned int *addrlen);
+int os_socket_accept(bh_socket_t server_sock, bh_socket_t *sock, void *addr,
+                     unsigned int *addrlen);
 
 /**
  * initiate a connection on a socket
@@ -250,8 +289,7 @@ os_socket_accept(bh_socket_t server_sock, bh_socket_t *sock, void *addr,
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_connect(bh_socket_t socket, const char *addr, int port);
+int os_socket_connect(bh_socket_t socket, const char *addr, int port);
 
 /**
  * Blocking receive message from a socket.
@@ -263,8 +301,7 @@ os_socket_connect(bh_socket_t socket, const char *addr, int port);
  *
  * @return number of bytes received if success, -1 otherwise
  */
-int
-os_socket_recv(bh_socket_t socket, void *buf, unsigned int len);
+int os_socket_recv(bh_socket_t socket, void *buf, unsigned int len);
 
 /**
  * Blocking receive message from a socket.
@@ -278,9 +315,8 @@ os_socket_recv(bh_socket_t socket, void *buf, unsigned int len);
  *
  * @return number of bytes sent if success, -1 otherwise
  */
-int
-os_socket_recv_from(bh_socket_t socket, void *buf, unsigned int len, int flags,
-                    bh_sockaddr_t *src_addr);
+int os_socket_recv_from(bh_socket_t socket, void *buf, unsigned int len, int flags,
+                        bh_sockaddr_t *src_addr);
 
 /**
  * Blocking send message on a socket
@@ -291,8 +327,7 @@ os_socket_recv_from(bh_socket_t socket, void *buf, unsigned int len, int flags,
  *
  * @return number of bytes sent if success, -1 otherwise
  */
-int
-os_socket_send(bh_socket_t socket, const void *buf, unsigned int len);
+int os_socket_send(bh_socket_t socket, const void *buf, unsigned int len);
 
 /**
  * Blocking send message on a socket to the target address
@@ -305,9 +340,8 @@ os_socket_send(bh_socket_t socket, const void *buf, unsigned int len);
  *
  * @return number of bytes sent if success, -1 otherwise
  */
-int
-os_socket_send_to(bh_socket_t socket, const void *buf, unsigned int len,
-                  int flags, const bh_sockaddr_t *dest_addr);
+int os_socket_send_to(bh_socket_t socket, const void *buf, unsigned int len,
+                      int flags, const bh_sockaddr_t *dest_addr);
 
 /**
  * Close a socket
@@ -316,8 +350,7 @@ os_socket_send_to(bh_socket_t socket, const void *buf, unsigned int len,
  *
  * @return always return 0
  */
-int
-os_socket_close(bh_socket_t socket);
+int os_socket_close(bh_socket_t socket);
 
 /**
  * Shutdown a socket
@@ -326,8 +359,7 @@ os_socket_close(bh_socket_t socket);
  *
  * @return always return 0
  */
-int
-os_socket_shutdown(bh_socket_t socket);
+int os_socket_shutdown(bh_socket_t socket);
 
 /**
  * converts cp into a number in host byte order suitable for use as
@@ -344,10 +376,10 @@ os_socket_shutdown(bh_socket_t socket);
  * @return On success, the function returns 0.
  * If the input is invalid, -1 is returned
  */
-int
-os_socket_inet_network(bool is_ipv4, const char *cp, bh_ip_addr_buffer_t *out);
+int os_socket_inet_network(bool is_ipv4, const char *cp, bh_ip_addr_buffer_t *out);
 
-typedef struct {
+typedef struct
+{
     bh_sockaddr_t sockaddr;
     uint8_t is_tcp;
 } bh_addr_info_t;
@@ -374,11 +406,10 @@ typedef struct {
 
  * @return On success, the function returns 0; otherwise, it returns -1
  */
-int
-os_socket_addr_resolve(const char *host, const char *service,
-                       uint8_t *hint_is_tcp, uint8_t *hint_is_ipv4,
-                       bh_addr_info_t *addr_info, size_t addr_info_size,
-                       size_t *max_info_size);
+int os_socket_addr_resolve(const char *host, const char *service,
+                           uint8_t *hint_is_tcp, uint8_t *hint_is_ipv4,
+                           bh_addr_info_t *addr_info, size_t addr_info_size,
+                           size_t *max_info_size);
 
 /**
  * Returns an binary address and a port of the local socket
@@ -389,8 +420,7 @@ os_socket_addr_resolve(const char *host, const char *service,
  *
  * @return On success, returns 0; otherwise, it returns -1.
  */
-int
-os_socket_addr_local(bh_socket_t socket, bh_sockaddr_t *sockaddr);
+int os_socket_addr_local(bh_socket_t socket, bh_sockaddr_t *sockaddr);
 
 /**
  * Returns an binary address and a port of the remote socket
@@ -401,8 +431,7 @@ os_socket_addr_local(bh_socket_t socket, bh_sockaddr_t *sockaddr);
  *
  * @return On success, returns 0; otherwise, it returns -1.
  */
-int
-os_socket_addr_remote(bh_socket_t socket, bh_sockaddr_t *sockaddr);
+int os_socket_addr_remote(bh_socket_t socket, bh_sockaddr_t *sockaddr);
 
 /**
  * Set the maximum send buffer size.
@@ -412,8 +441,7 @@ os_socket_addr_remote(bh_socket_t socket, bh_sockaddr_t *sockaddr);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_send_buf_size(bh_socket_t socket, size_t bufsiz);
+int os_socket_set_send_buf_size(bh_socket_t socket, size_t bufsiz);
 
 /**
  * Get the maximum send buffer size.
@@ -423,8 +451,7 @@ os_socket_set_send_buf_size(bh_socket_t socket, size_t bufsiz);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_send_buf_size(bh_socket_t socket, size_t *bufsiz);
+int os_socket_get_send_buf_size(bh_socket_t socket, size_t *bufsiz);
 
 /**
  * Set the maximum receive buffer size.
@@ -434,8 +461,7 @@ os_socket_get_send_buf_size(bh_socket_t socket, size_t *bufsiz);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_recv_buf_size(bh_socket_t socket, size_t bufsiz);
+int os_socket_set_recv_buf_size(bh_socket_t socket, size_t bufsiz);
 
 /**
  * Get the maximum receive buffer size.
@@ -445,8 +471,7 @@ os_socket_set_recv_buf_size(bh_socket_t socket, size_t bufsiz);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_recv_buf_size(bh_socket_t socket, size_t *bufsiz);
+int os_socket_get_recv_buf_size(bh_socket_t socket, size_t *bufsiz);
 
 /**
  * Enable sending of keep-alive messages on connection-oriented sockets
@@ -456,8 +481,7 @@ os_socket_get_recv_buf_size(bh_socket_t socket, size_t *bufsiz);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_keep_alive(bh_socket_t socket, bool is_enabled);
+int os_socket_set_keep_alive(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get if sending of keep-alive messages on connection-oriented sockets is
@@ -468,8 +492,7 @@ os_socket_set_keep_alive(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_keep_alive(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_keep_alive(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Set the send timeout until reporting an error
@@ -479,8 +502,7 @@ os_socket_get_keep_alive(bh_socket_t socket, bool *is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_send_timeout(bh_socket_t socket, uint64 timeout_us);
+int os_socket_set_send_timeout(bh_socket_t socket, uint64 timeout_us);
 
 /**
  * Get the send timeout until reporting an error
@@ -490,8 +512,7 @@ os_socket_set_send_timeout(bh_socket_t socket, uint64 timeout_us);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_send_timeout(bh_socket_t socket, uint64 *timeout_us);
+int os_socket_get_send_timeout(bh_socket_t socket, uint64 *timeout_us);
 
 /**
  * Set the recv timeout until reporting an error
@@ -501,8 +522,7 @@ os_socket_get_send_timeout(bh_socket_t socket, uint64 *timeout_us);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_recv_timeout(bh_socket_t socket, uint64 timeout_us);
+int os_socket_set_recv_timeout(bh_socket_t socket, uint64 timeout_us);
 
 /**
  * Get the recv timeout until reporting an error
@@ -512,8 +532,7 @@ os_socket_set_recv_timeout(bh_socket_t socket, uint64 timeout_us);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_recv_timeout(bh_socket_t socket, uint64 *timeout_us);
+int os_socket_get_recv_timeout(bh_socket_t socket, uint64 *timeout_us);
 
 /**
  * Enable re-use of local addresses
@@ -523,8 +542,7 @@ os_socket_get_recv_timeout(bh_socket_t socket, uint64 *timeout_us);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_reuse_addr(bh_socket_t socket, bool is_enabled);
+int os_socket_set_reuse_addr(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get whether re-use of local addresses is enabled
@@ -534,8 +552,7 @@ os_socket_set_reuse_addr(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_reuse_addr(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_reuse_addr(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Enable re-use of local ports
@@ -545,8 +562,7 @@ os_socket_get_reuse_addr(bh_socket_t socket, bool *is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_reuse_port(bh_socket_t socket, bool is_enabled);
+int os_socket_set_reuse_port(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get whether re-use of local ports is enabled
@@ -556,8 +572,7 @@ os_socket_set_reuse_port(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_reuse_port(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_reuse_port(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Set the linger options for the given socket
@@ -567,8 +582,7 @@ os_socket_get_reuse_port(bh_socket_t socket, bool *is_enabled);
  * @param linger_s linger time (seconds)
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_linger(bh_socket_t socket, bool is_enabled, int linger_s);
+int os_socket_set_linger(bh_socket_t socket, bool is_enabled, int linger_s);
 
 /**
  * Get the linger options for the given socket
@@ -578,8 +592,7 @@ os_socket_set_linger(bh_socket_t socket, bool is_enabled, int linger_s);
  * @param linger_s linger time (seconds)
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_linger(bh_socket_t socket, bool *is_enabled, int *linger_s);
+int os_socket_get_linger(bh_socket_t socket, bool *is_enabled, int *linger_s);
 
 /**
  * Set no delay TCP
@@ -592,8 +605,7 @@ os_socket_get_linger(bh_socket_t socket, bool *is_enabled, int *linger_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_tcp_no_delay(bh_socket_t socket, bool is_enabled);
+int os_socket_set_tcp_no_delay(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get no delay TCP
@@ -606,8 +618,7 @@ os_socket_set_tcp_no_delay(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_tcp_no_delay(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_tcp_no_delay(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Enable/Disable tcp quickack mode
@@ -619,8 +630,7 @@ os_socket_get_tcp_no_delay(bh_socket_t socket, bool *is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_tcp_quick_ack(bh_socket_t socket, bool is_enabled);
+int os_socket_set_tcp_quick_ack(bh_socket_t socket, bool is_enabled);
 
 /**
  * Enable/Disable tcp quickack mode
@@ -632,8 +642,7 @@ os_socket_set_tcp_quick_ack(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_tcp_quick_ack(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_tcp_quick_ack(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Set the time the connection needs to remain idle before sending keepalive
@@ -644,8 +653,7 @@ os_socket_get_tcp_quick_ack(bh_socket_t socket, bool *is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_tcp_keep_idle(bh_socket_t socket, uint32_t time_s);
+int os_socket_set_tcp_keep_idle(bh_socket_t socket, uint32_t time_s);
 
 /**
  * Gets the time the connection needs to remain idle before sending keepalive
@@ -656,8 +664,7 @@ os_socket_set_tcp_keep_idle(bh_socket_t socket, uint32_t time_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_tcp_keep_idle(bh_socket_t socket, uint32_t *time_s);
+int os_socket_get_tcp_keep_idle(bh_socket_t socket, uint32_t *time_s);
 
 /**
  * Set the time between individual keepalive probes
@@ -667,8 +674,7 @@ os_socket_get_tcp_keep_idle(bh_socket_t socket, uint32_t *time_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_tcp_keep_intvl(bh_socket_t socket, uint32_t time_s);
+int os_socket_set_tcp_keep_intvl(bh_socket_t socket, uint32_t time_s);
 
 /**
  * Get the time between individual keepalive probes
@@ -678,8 +684,7 @@ os_socket_set_tcp_keep_intvl(bh_socket_t socket, uint32_t time_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_tcp_keep_intvl(bh_socket_t socket, uint32_t *time_s);
+int os_socket_get_tcp_keep_intvl(bh_socket_t socket, uint32_t *time_s);
 
 /**
  * Set use of TCP Fast Open
@@ -689,8 +694,7 @@ os_socket_get_tcp_keep_intvl(bh_socket_t socket, uint32_t *time_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_tcp_fastopen_connect(bh_socket_t socket, bool is_enabled);
+int os_socket_set_tcp_fastopen_connect(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get whether use of TCP Fast Open is enabled
@@ -700,8 +704,7 @@ os_socket_set_tcp_fastopen_connect(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_tcp_fastopen_connect(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_tcp_fastopen_connect(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Set enable or disable IPv4 or IPv6 multicast loopback.
@@ -712,8 +715,7 @@ os_socket_get_tcp_fastopen_connect(bh_socket_t socket, bool *is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_ip_multicast_loop(bh_socket_t socket, bool ipv6, bool is_enabled);
+int os_socket_set_ip_multicast_loop(bh_socket_t socket, bool ipv6, bool is_enabled);
 
 /**
  * Get enable or disable IPv4 or IPv6 multicast loopback.
@@ -724,9 +726,8 @@ os_socket_set_ip_multicast_loop(bh_socket_t socket, bool ipv6, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_ip_multicast_loop(bh_socket_t socket, bool ipv6,
-                                bool *is_enabled);
+int os_socket_get_ip_multicast_loop(bh_socket_t socket, bool ipv6,
+                                    bool *is_enabled);
 
 /**
  * Add membership to a group
@@ -738,10 +739,9 @@ os_socket_get_ip_multicast_loop(bh_socket_t socket, bool ipv6,
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_ip_add_membership(bh_socket_t socket,
-                                bh_ip_addr_buffer_t *imr_multiaddr,
-                                uint32_t imr_interface, bool is_ipv6);
+int os_socket_set_ip_add_membership(bh_socket_t socket,
+                                    bh_ip_addr_buffer_t *imr_multiaddr,
+                                    uint32_t imr_interface, bool is_ipv6);
 
 /**
  * Drop membership of a group
@@ -753,10 +753,9 @@ os_socket_set_ip_add_membership(bh_socket_t socket,
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_ip_drop_membership(bh_socket_t socket,
-                                 bh_ip_addr_buffer_t *imr_multiaddr,
-                                 uint32_t imr_interface, bool is_ipv6);
+int os_socket_set_ip_drop_membership(bh_socket_t socket,
+                                     bh_ip_addr_buffer_t *imr_multiaddr,
+                                     uint32_t imr_interface, bool is_ipv6);
 
 /**
  * Set the current time-to-live field that is
@@ -766,8 +765,7 @@ os_socket_set_ip_drop_membership(bh_socket_t socket,
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_ip_ttl(bh_socket_t socket, uint8_t ttl_s);
+int os_socket_set_ip_ttl(bh_socket_t socket, uint8_t ttl_s);
 
 /**
  * Retrieve the current time-to-live field that is
@@ -777,8 +775,7 @@ os_socket_set_ip_ttl(bh_socket_t socket, uint8_t ttl_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_ip_ttl(bh_socket_t socket, uint8_t *ttl_s);
+int os_socket_get_ip_ttl(bh_socket_t socket, uint8_t *ttl_s);
 
 /**
  * Set the time-to-live value of outgoing multicast
@@ -788,8 +785,7 @@ os_socket_get_ip_ttl(bh_socket_t socket, uint8_t *ttl_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_ip_multicast_ttl(bh_socket_t socket, uint8_t ttl_s);
+int os_socket_set_ip_multicast_ttl(bh_socket_t socket, uint8_t ttl_s);
 
 /**
  * Read the time-to-live value of outgoing multicast
@@ -799,8 +795,7 @@ os_socket_set_ip_multicast_ttl(bh_socket_t socket, uint8_t ttl_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_ip_multicast_ttl(bh_socket_t socket, uint8_t *ttl_s);
+int os_socket_get_ip_multicast_ttl(bh_socket_t socket, uint8_t *ttl_s);
 
 /**
  * Restrict to sending and receiving IPv6 packets only
@@ -810,8 +805,7 @@ os_socket_get_ip_multicast_ttl(bh_socket_t socket, uint8_t *ttl_s);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_ipv6_only(bh_socket_t socket, bool is_enabled);
+int os_socket_set_ipv6_only(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get whether only sending and receiving IPv6 packets
@@ -821,8 +815,7 @@ os_socket_set_ipv6_only(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_ipv6_only(bh_socket_t socket, bool *is_enabled);
+int os_socket_get_ipv6_only(bh_socket_t socket, bool *is_enabled);
 
 /**
  * Set whether broadcast is enabled
@@ -834,8 +827,7 @@ os_socket_get_ipv6_only(bh_socket_t socket, bool *is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_set_broadcast(bh_socket_t socket, bool is_enabled);
+int os_socket_set_broadcast(bh_socket_t socket, bool is_enabled);
 
 /**
  * Get whether broadcast is enabled
@@ -847,8 +839,6 @@ os_socket_set_broadcast(bh_socket_t socket, bool is_enabled);
  *
  * @return 0 if success, -1 otherwise
  */
-int
-os_socket_get_broadcast(bh_socket_t socket, bool *is_enabled);
-
+int os_socket_get_broadcast(bh_socket_t socket, bool *is_enabled);
 
 #endif /* #ifndef PLATFORM_API_EXTENSION_H */

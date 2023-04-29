@@ -1,14 +1,12 @@
 cmake_minimum_required (VERSION 3.14)
 
 set (CMAKE_C_COMPILER "/usr/bin/gcc")
-#include(CheckPIESupported)
 
 project (runtime)
-#set (CMAKE_VERBOSE_MAKEFILE OFF)
 
-if (NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-endif ()
+# if (NOT CMAKE_BUILD_TYPE)
+#   set(CMAKE_BUILD_TYPE Release)
+# endif ()
 
 if(NOT DEFINED RUNTIME_BUILD_PLATFORM)
   set (RUNTIME_BUILD_PLATFORM "linux")
@@ -32,8 +30,11 @@ if (NOT DEFINED WAMR_BUILD_TARGET)
   endif ()
 endif ()
 
-#add_definitions("-Wall -g")
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -o2")
+add_definitions("-Wall -g")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wformat -Wformat-security -Wshadow")
+# set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wconversion -Wsign-conversion")
+
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wformat -Wformat-security -Wno-unused")
 
 set (RUNTIME_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set (PRODUCT_DIR ${RUNTIME_ROOT_DIR}/product/${RUNTIME_BUILD_PLATFORM})
@@ -46,17 +47,4 @@ include (${RUNTIME_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 
 add_executable (runtime ${MAIN_SOURCE} ${WASM_RUNTIME_LIB_SOURCE})
 
-#check_pie_supported()
-#set_target_properties (runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-#install (TARGETS runtime DESTINATION bin)
-
-target_link_libraries (runtime -lm -lpthread)
-
-#add_library (libiwasm SHARED ${WAMR_RUNTIME_LIB_SOURCE})
-
-#install (TARGETS libiwasm DESTINATION lib)
-
-#set_target_properties (libiwasm PROPERTIES OUTPUT_NAME iwasm)
-
-#target_link_libraries (libiwasm ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
+target_link_libraries (runtime -lm -lpthread ${LLVM_AVAILABLE_LIBS})

@@ -26,11 +26,9 @@ void *
 wasm_native_resolve_symbol(const char *module_name, const char *field_name,
                            const WASMType *func_type, const char **p_signature);
 
-void 
-wasm_native_destroy();
+void wasm_native_destroy();
 
-bool 
-wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func, uint32 *argv,
+bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, uint32 func_idx, uint32 *argv,
                                 uint32 *argv_ret);
 
 #endif /* end of _WASM_NATIVE_H */

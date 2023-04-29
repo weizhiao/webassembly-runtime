@@ -1,20 +1,53 @@
-#include "wasm_opcode.h"
 #include "wasm_validator.h"
-#include "wasm_memory.h"
 #include "runtime_utils.h"
 #include "wasm_leb_validator.h"
-#include "wasm_exception.h"
+#include "wasm_block_validator.h"
+#include "wasm_stack_validator.h"
 
-#define REF_I32 VALUE_TYPE_I32
-#define REF_F32 VALUE_TYPE_F32
-#define REF_I64_1 VALUE_TYPE_I64
-#define REF_I64_2 VALUE_TYPE_I64
-#define REF_F64_1 VALUE_TYPE_F64
-#define REF_F64_2 VALUE_TYPE_F64
-#define REF_V128_1 VALUE_TYPE_V128
-#define REF_V128_2 VALUE_TYPE_V128
-#define REF_V128_3 VALUE_TYPE_V128
-#define REF_V128_4 VALUE_TYPE_V128
+#if WASM_ENABLE_JIT != 0
+#define ADD_EXTINFO(res)                                          \
+    do                                                            \
+    {                                                             \
+        ExtInfo *_op_info = wasm_runtime_malloc(sizeof(ExtInfo)); \
+        _op_info->next_op = NULL;                                 \
+        _op_info->idx = res;                                      \
+        func->last_op_info->next_op = _op_info;                   \
+        func->last_op_info = _op_info;                            \
+    } while (0)
+
+#define INIT_BLOCK_IN_FUNCTION()                                                  \
+    do                                                                            \
+    {                                                                             \
+        func->blocks = func->last_block = wasm_runtime_malloc(sizeof(WASMBlock)); \
+    } while (0)
+
+#define ADD_BLOCK_IN_FUNCTION(cur_block)                               \
+    do                                                                 \
+    {                                                                  \
+        WASMBlock *_block = wasm_runtime_malloc(sizeof(WASMBlock));    \
+        _block->stack_num = cur_block->stack_num;                      \
+        _block->has_else_branch = cur_block->else_addr ? true : false; \
+        _block->next_block = NULL;                                     \
+        func->last_block->next_block = _block;                         \
+        func->last_block = _block;                                     \
+    } while (0)
+#endif
+
+#define validate_leb_template(p, p_end, res, type) \
+    do                                             \
+    {                                              \
+        read_leb_##type(p, p_end, res);            \
+    } while (0)
+
+#define validate_leb_uint32(p, p_end, res) validate_leb_template(p, p_end, res, uint32)
+#define validate_leb_int32(p, p_end, res) validate_leb_template(p, p_end, res, int32)
+#define validate_leb_int64(p, p_end, res) validate_leb_template(p, p_end, res, int64)
+
+#define validate_read_uint8(p, res) \
+    do                              \
+    {                               \
+        res = read_uint8(p);        \
+    } while (0)
 
 static inline bool
 is_32bit_type(uint8 type)
@@ -30,175 +63,6 @@ is_64bit_type(uint8 type)
     if (type == VALUE_TYPE_I64 || type == VALUE_TYPE_F64)
         return true;
     return false;
-}
-
-#define CHECK_STACK_POP(cur_type, expect_type)           \
-    do                                                   \
-    {                                                    \
-        if (cur_type != expect_type)                     \
-        {                                                \
-            wasm_set_exception(module, "type mismatch"); \
-            return false;                                \
-        }                                                \
-    } while (0)
-
-static bool
-wasm_loader_push_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 type)
-{
-    // 如果空间不够会增加16个位置
-    if (ctx->stack_num == ctx->frame_ref_size)
-    {
-        ctx->frame_ref_bottom = wasm_runtime_realloc(ctx->frame_ref_bottom, ctx->frame_ref_size + 16);
-        if (!ctx->frame_ref_bottom)
-        {
-            return false;
-        }
-        ctx->frame_ref_size += 16;
-        ctx->frame_ref = ctx->frame_ref_bottom + ctx->stack_cell_num;
-    }
-
-    *ctx->frame_ref++ = type;
-    // 增加个数,即使为void
-    ctx->stack_num++;
-    ctx->stack_cell_num += wasm_value_type_cell_num(type);
-
-    if (ctx->stack_num > ctx->max_stack_num)
-    {
-        ctx->max_stack_num++;
-    }
-    if (ctx->stack_cell_num > ctx->max_stack_cell_num)
-    {
-        ctx->max_stack_cell_num = ctx->stack_cell_num;
-    }
-    return true;
-}
-
-static bool
-wasm_loader_pop_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 type)
-{
-    BranchBlock *cur_block = ctx->frame_csp - 1;
-    uint8 *frame_ref = ctx->frame_ref - 1;
-    int32 available_stack_num =
-        (int32)(ctx->stack_num - cur_block->stack_num);
-
-    if (available_stack_num <= 0 && cur_block->is_stack_polymorphic)
-        return true;
-
-    if (available_stack_num <= 0)
-    {
-        wasm_set_exception(module, "type mismatch");
-        return false;
-    }
-
-    CHECK_STACK_POP(*frame_ref, type);
-
-    ctx->frame_ref--;
-    // 减少个数
-    ctx->stack_num--;
-    ctx->stack_cell_num -= wasm_value_type_cell_num(type);
-
-    return true;
-}
-
-static bool
-wasm_loader_push_frame_csp(WASMLoaderContext *ctx, uint8 label_type,
-                           BlockType block_type, uint8 *start_addr)
-{
-    BranchBlock *frame_csp;
-    if (ctx->csp_num == ctx->frame_csp_size)
-    {
-        ctx->frame_csp_bottom = wasm_runtime_realloc(
-            ctx->frame_csp_bottom,
-            (ctx->frame_csp_size + 8) * sizeof(BranchBlock));
-        if (!ctx->frame_csp_bottom)
-        {
-            return false;
-        }
-        ctx->frame_csp_size += 8;
-        ctx->frame_csp = ctx->frame_csp_bottom + ctx->csp_num;
-    }
-    frame_csp = ctx->frame_csp;
-    frame_csp->label_type = label_type;
-    frame_csp->block_type = block_type;
-    frame_csp->start_addr = start_addr;
-    frame_csp->stack_num = ctx->stack_num;
-    frame_csp->else_addr = NULL;
-    frame_csp->end_addr = NULL;
-    frame_csp->stack_cell_num = ctx->stack_cell_num;
-    frame_csp->table_queue_num = 0;
-    frame_csp->table_queue_size = 0;
-    frame_csp->table_queue_bottom = NULL;
-
-    if (label_type == LABEL_TYPE_LOOP)
-    {
-        frame_csp->branch_table_end_idx = ctx->branch_table_num;
-    }
-
-    ctx->frame_csp++;
-    ctx->csp_num++;
-    if (ctx->csp_num > ctx->max_csp_num)
-    {
-        ctx->max_csp_num++;
-    }
-    return true;
-}
-
-static bool
-wasm_loader_pop_frame_csp(WASMModule *module, WASMLoaderContext *ctx)
-{
-    BranchBlock *frame_csp;
-    WASMBranchTable *branch_table;
-    uint32 i;
-    if (ctx->csp_num < 1)
-    {
-        wasm_set_exception(module,
-                           "type mismatch: "
-                           "expect data but block stack was empty");
-        return false;
-    }
-
-    frame_csp = ctx->frame_csp - 1;
-    if (frame_csp->label_type != LABEL_TYPE_LOOP)
-    {
-        frame_csp->branch_table_end_idx = ctx->branch_table_num;
-    }
-
-    for (i = 0; i < frame_csp->table_queue_num; i++)
-    {
-        branch_table = ctx->branch_table_bottom + frame_csp->table_queue_bottom[i];
-        uint32 opcode = branch_table->stp;
-
-        switch (opcode)
-        {
-        case WASM_OP_BR:
-        case WASM_OP_BR_IF:
-        case WASM_OP_BR_TABLE:
-            branch_table->ip = frame_csp->end_addr;
-            branch_table->stp = frame_csp->branch_table_end_idx;
-            break;
-        case WASM_OP_IF:
-            branch_table->ip = frame_csp->else_addr;
-            branch_table->stp = frame_csp->branch_table_else_idx;
-            break;
-        case WASM_OP_ELSE:
-            branch_table->ip = frame_csp->end_addr;
-            branch_table->stp = frame_csp->branch_table_end_idx;
-            break;
-        default:
-            wasm_set_exception(module, "unsupport branch opcode");
-            return false;
-        }
-    }
-
-    if (frame_csp->table_queue_num)
-    {
-        wasm_runtime_free(frame_csp->table_queue_bottom);
-    }
-
-    ctx->frame_csp--;
-    ctx->csp_num--;
-
-    return true;
 }
 
 static bool
@@ -278,78 +142,10 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
     return true;
 }
 
-#define TEMPLATE_PUSH(Type)                                                       \
-    do                                                                            \
-    {                                                                             \
-        if (!(wasm_loader_push_frame_ref(module, loader_ctx, VALUE_TYPE_##Type))) \
-            goto fail;                                                            \
-    } while (0)
-
-#define TEMPLATE_POP(Type)                                                       \
-    do                                                                           \
-    {                                                                            \
-        if (!(wasm_loader_pop_frame_ref(module, loader_ctx, VALUE_TYPE_##Type))) \
-            goto fail;                                                           \
-    } while (0)
-
-#define PUSH_I32() TEMPLATE_PUSH(I32)
-#define PUSH_F32() TEMPLATE_PUSH(F32)
-#define PUSH_I64() TEMPLATE_PUSH(I64)
-#define PUSH_F64() TEMPLATE_PUSH(F64)
-#define PUSH_V128() TEMPLATE_PUSH(V128)
-#define PUSH_FUNCREF() TEMPLATE_PUSH(FUNCREF)
-#define PUSH_EXTERNREF() TEMPLATE_PUSH(EXTERNREF)
-
-#define POP_I32() TEMPLATE_POP(I32)
-#define POP_F32() TEMPLATE_POP(F32)
-#define POP_I64() TEMPLATE_POP(I64)
-#define POP_F64() TEMPLATE_POP(F64)
-#define POP_V128() TEMPLATE_POP(V128)
-#define POP_FUNCREF() TEMPLATE_POP(FUNCREF)
-#define POP_EXTERNREF() TEMPLATE_POP(EXTERNREF)
-
-#define PUSH_TYPE(type)                                              \
-    do                                                               \
-    {                                                                \
-        if (!(wasm_loader_push_frame_ref(module, loader_ctx, type))) \
-            goto fail;                                               \
-    } while (0)
-
-#define POP_TYPE(type)                                              \
-    do                                                              \
-    {                                                               \
-        if (!(wasm_loader_pop_frame_ref(module, loader_ctx, type))) \
-            goto fail;                                              \
-    } while (0)
-
-#define PUSH_CSP(label_type, block_type, _start_addr)                       \
-    do                                                                      \
-    {                                                                       \
-        if (!wasm_loader_push_frame_csp(loader_ctx, label_type, block_type, \
-                                        _start_addr))                       \
-            goto fail;                                                      \
-    } while (0)
-
-#define POP_AND_PUSH(type_pop, type_push) \
-    do                                    \
-    {                                     \
-        POP_TYPE(type_pop);               \
-        PUSH_TYPE(type_push);             \
-    } while (0)
-
-/* type of POPs should be the same */
-#define POP2_AND_PUSH(type_pop, type_push) \
-    do                                     \
-    {                                      \
-        POP_TYPE(type_pop);                \
-        POP_TYPE(type_pop);                \
-        PUSH_TYPE(type_push);              \
-    } while (0)
-
 #define GET_LOCAL_INDEX_TYPE_AND_OFFSET()                        \
     do                                                           \
     {                                                            \
-        read_leb_uint32(p, p_end, local_idx);                    \
+        validate_leb_uint32(p, p_end, local_idx);                \
         if (local_idx >= param_count + local_count)              \
         {                                                        \
             wasm_set_exception(module, "unknown local");         \
@@ -396,7 +192,7 @@ check_memory_access_align(WASMModule *module, uint8 opcode, uint32 align)
 }
 
 static inline uint32
-block_type_get_param_types(BlockType *block_type, uint8 **p_param_types)
+block_get_param_types(BlockType *block_type, uint8 **p_param_types)
 {
     uint32 param_count = 0;
     if (!block_type->is_value_type)
@@ -415,7 +211,7 @@ block_type_get_param_types(BlockType *block_type, uint8 **p_param_types)
 }
 
 static inline uint32
-block_type_get_result_types(BlockType *block_type, uint8 **p_result_types)
+block_get_result_types(BlockType *block_type, uint8 **p_result_types)
 {
     uint32 result_count = 0;
     if (block_type->is_value_type)
@@ -448,8 +244,7 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
     BlockType *target_block_type;
     uint8 *types = NULL, *frame_ref;
     uint32 arity = 0;
-    int32 i, available_stack_num;
-    uint16 cell_num;
+    int32 i;
 
     if (loader_ctx->csp_num < depth + 1)
     {
@@ -466,9 +261,9 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
 
     // 对于loop需要特殊处理
     if (target_block->label_type == LABEL_TYPE_LOOP)
-        arity = block_type_get_param_types(target_block_type, &types);
+        arity = block_get_param_types(target_block_type, &types);
     else
-        arity = block_type_get_result_types(target_block_type, &types);
+        arity = block_get_result_types(target_block_type, &types);
 
     if (cur_block->is_stack_polymorphic)
     {
@@ -483,15 +278,12 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
         return true;
     }
 
-    available_stack_num = (int32)(loader_ctx->stack_num - cur_block->stack_num);
-
-    if (available_stack_num != arity)
+    if (loader_ctx->stack_num < arity)
     {
         wasm_set_exception(module, "type mismatch");
         return false;
     }
 
-    /* Check stack top values match target block type */
     for (i = (int32)arity - 1; i >= 0; i--)
     {
         CHECK_STACK_POP(*frame_ref, types[i]);
@@ -499,7 +291,6 @@ wasm_loader_check_br(WASMModule *module, WASMLoaderContext *loader_ctx, uint32 d
     }
 
     return true;
-
 fail:
     return false;
 }
@@ -509,17 +300,17 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
 {
     BlockType *block_type = &block->block_type;
     uint8 *return_types = NULL;
-    uint32 return_count = 0;
+    int32 return_count = 0;
     int32 available_stack_num, i;
     uint8 *frame_ref = NULL;
 
     available_stack_num = (int32)(loader_ctx->stack_num - block->stack_num);
 
-    return_count = block_type_get_result_types(block_type, &return_types);
+    return_count = (int32)block_get_result_types(block_type, &return_types);
 
     if (block->is_stack_polymorphic)
     {
-        for (i = (int32)return_count - 1; i >= 0; i--)
+        for (i = return_count - 1; i >= 0; i--)
         {
             POP_TYPE(return_types[i]);
         }
@@ -527,13 +318,11 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
         /* Check stack is empty */
         if (loader_ctx->stack_cell_num != block->stack_cell_num)
         {
-            wasm_set_exception(
-                module,
-                "type mismatch: stack size does not match block type");
+            wasm_set_exception(module, "type mismatch: stack size does not match block type");
             return false;
         }
 
-        for (i = 0; i < (int32)return_count; i++)
+        for (i = 0; i < return_count; i++)
         {
             PUSH_TYPE(return_types[i]);
         }
@@ -561,14 +350,13 @@ fail:
 }
 
 /* reset the stack to the state of before entering the last block */
-#define RESET_STACK()                                             \
-    do                                                            \
-    {                                                             \
-        BranchBlock *_frame_csp = loader_ctx->frame_csp - 1;      \
-        loader_ctx->stack_cell_num = _frame_csp->stack_cell_num;  \
-        loader_ctx->stack_num = _frame_csp->stack_num;            \
-        loader_ctx->frame_ref =                                   \
-            loader_ctx->frame_ref_bottom + loader_ctx->stack_num; \
+#define RESET_STACK()                                                                 \
+    do                                                                                \
+    {                                                                                 \
+        BranchBlock *_frame_csp = loader_ctx->frame_csp - 1;                          \
+        loader_ctx->stack_cell_num = _frame_csp->stack_cell_num;                      \
+        loader_ctx->stack_num = _frame_csp->stack_num;                                \
+        loader_ctx->frame_ref = loader_ctx->frame_ref_bottom + loader_ctx->stack_num; \
     } while (0)
 
 /* set current block's stack polymorphic state */
@@ -696,11 +484,14 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
     local_offsets = func->local_offsets;
 
     if (!(loader_ctx = wasm_loader_ctx_init()))
-    {
         goto fail;
-    }
 
-    PUSH_CSP(LABEL_TYPE_FUNCTION, func_block_type, p);
+    PUSH_BLOCK(loader_ctx, LABEL_TYPE_FUNCTION, func_block_type, p);
+
+#if WASM_ENABLE_JIT != 0
+    INIT_BLOCK_IN_FUNCTION();
+    func->op_info = func->last_op_info = wasm_runtime_malloc(sizeof(ExtInfo));
+#endif
 
     while (p < p_end)
     {
@@ -724,7 +515,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             uint8 value_type;
             BlockType block_type;
 
-            value_type = read_uint8(p);
+            validate_read_uint8(p, value_type);
             if (is_byte_a_type(value_type))
             {
                 /* If the first byte is one of these special values:
@@ -736,9 +527,8 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             else
             {
                 uint32 type_index;
-                /* Resolve the leb128 encoded type index as block type */
                 p--;
-                read_leb_uint32(p, p_end, type_index);
+                validate_leb_uint32(p, p_end, type_index);
                 if (type_index >= module->type_count)
                 {
                     wasm_set_exception(module,
@@ -753,13 +543,17 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             if (BLOCK_HAS_PARAM(block_type))
             {
                 WASMType *wasm_type = block_type.u.type;
+                uint32 cur_param_count = wasm_type->param_count;
                 for (i = 0; i < wasm_type->param_count; i++)
-                    POP_TYPE(
-                        wasm_type->param[wasm_type->param_count - i - 1]);
+                    POP_TYPE(wasm_type->param[cur_param_count - i - 1]);
             }
 
-            PUSH_CSP(LABEL_TYPE_BLOCK + (opcode - WASM_OP_BLOCK),
-                     block_type, p);
+            PUSH_BLOCK(loader_ctx, LABEL_TYPE_BLOCK + (opcode - WASM_OP_BLOCK), block_type, p);
+
+#if WASM_ENABLE_JIT != 0
+            BranchBlock *cur_block = loader_ctx->frame_csp - 1;
+            ADD_BLOCK_IN_FUNCTION(cur_block);
+#endif
 
             /* Pass parameters to block */
             if (BLOCK_HAS_PARAM(block_type))
@@ -769,8 +563,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                     PUSH_TYPE(wasm_type->param[i]);
             }
 
-            if (opcode == WASM_OP_IF &&
-                !wasm_emit_branch_table(loader_ctx, WASM_OP_IF, 0))
+            if (opcode == WASM_OP_IF && !wasm_emit_branch_table(loader_ctx, WASM_OP_IF, 0))
                 goto fail;
 
             break;
@@ -788,7 +581,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 goto fail;
             }
 
-            if (!check_block_stack(module, loader_ctx, loader_ctx->frame_csp - 1))
+            if (!check_block_stack(module, loader_ctx, cur_block))
                 goto fail;
 
             // 针对if指令设置跳转表
@@ -814,12 +607,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
         {
             BranchBlock *cur_block = loader_ctx->frame_csp - 1;
 
-            /* check whether block stack matches its result type */
             if (!check_block_stack(module, loader_ctx, cur_block))
                 goto fail;
 
-            /* if no else branch, and return types do not match param types,
-             * fail */
             if (cur_block->label_type == LABEL_TYPE_IF && !cur_block->else_addr)
             {
                 uint32 block_param_count = 0, block_ret_count = 0;
@@ -848,26 +638,21 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                     goto fail;
                 }
                 cur_block->else_addr = p - 1;
+                // 这种情况下跳转表的else和end两者是相同的
                 cur_block->branch_table_else_idx = loader_ctx->branch_table_num;
             }
 
             if (cur_block->label_type == LABEL_TYPE_LOOP)
-            {
                 cur_block->end_addr = cur_block->start_addr;
-            }
             else
-            {
                 cur_block->end_addr = p - 1;
-            }
 
-            if (!wasm_loader_pop_frame_csp(module, loader_ctx))
-                goto fail;
+            POP_BLOCK();
 
             if (loader_ctx->csp_num == 0 && p < p_end)
             {
 
-                wasm_set_exception(module,
-                                   "section size mismatch");
+                wasm_set_exception(module, "section size mismatch");
                 goto fail;
             }
 
@@ -877,7 +662,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
         case WASM_OP_BR:
         {
             uint32 depth;
-            read_leb_uint32(p, p_end, depth);
+            validate_leb_uint32(p, p_end, depth);
             if (!wasm_loader_check_br(module, loader_ctx, depth))
                 goto fail;
             if (!wasm_emit_branch_table(loader_ctx, WASM_OP_BR, depth))
@@ -891,7 +676,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
         {
             POP_I32();
             uint32 depth;
-            read_leb_uint32(p, p_end, depth);
+            validate_leb_uint32(p, p_end, depth);
             if (!wasm_loader_check_br(module, loader_ctx, depth))
                 goto fail;
             if (!wasm_emit_branch_table(loader_ctx, WASM_OP_BR_IF, depth))
@@ -907,12 +692,12 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
 
             uint32 depth;
 
-            read_leb_uint32(p, p_end, count);
+            validate_leb_uint32(p, p_end, count);
             POP_I32();
 
             for (i = 0; i <= count; i++)
             {
-                read_leb_uint32(p, p_end, depth);
+                validate_leb_uint32(p, p_end, depth);
                 if (!wasm_loader_check_br(module, loader_ctx, depth))
                     goto fail;
                 if (!wasm_emit_branch_table(loader_ctx, WASM_OP_BR_TABLE, depth))
@@ -923,7 +708,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 if (i == 0)
                 {
                     if (frame_csp_tmp->label_type != LABEL_TYPE_LOOP)
-                        ret_count = block_type_get_result_types(
+                        ret_count = block_get_result_types(
                             &frame_csp_tmp->block_type, &ret_types);
                 }
                 else
@@ -934,7 +719,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                     /* Check whether all table items have the same return
                      * type */
                     if (frame_csp_tmp->label_type != LABEL_TYPE_LOOP)
-                        tmp_ret_count = block_type_get_result_types(
+                        tmp_ret_count = block_get_result_types(
                             &frame_csp_tmp->block_type, &tmp_ret_types);
 
                     if (ret_count != tmp_ret_count || (ret_count && 0 != memcmp(ret_types, tmp_ret_types,
@@ -967,7 +752,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
 
             RESET_STACK();
             SET_CUR_BLOCK_STACK_POLYMORPHIC_STATE(true);
-
             break;
         }
 
@@ -976,7 +760,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             WASMType *func_type;
             int32 idx;
 
-            read_leb_uint32(p, p_end, func_idx);
+            validate_leb_uint32(p, p_end, func_idx);
             if (!check_function_index(module, func_idx))
             {
                 goto fail;
@@ -1005,12 +789,8 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             int32 idx;
             WASMType *func_type;
 
-            read_leb_uint32(p, p_end, type_idx);
-#if WASM_ENABLE_REF_TYPES != 0
-            read_leb_uint32(p, p_end, table_idx);
-#else
-            table_idx = read_uint8(p);
-#endif
+            validate_leb_uint32(p, p_end, type_idx);
+            validate_leb_uint32(p, p_end, table_idx);
             if (!check_table_index(module, table_idx))
             {
                 goto fail;
@@ -1075,10 +855,13 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             p_org = p - 1;
             GET_LOCAL_INDEX_TYPE_AND_OFFSET();
             PUSH_TYPE(local_type);
-
+#if WASM_ENABLE_JIT != 0
+            ADD_EXTINFO(local_idx);
+#endif
             if (local_offset < 0x80)
             {
                 *p_org++ = EXT_OP_GET_LOCAL_FAST;
+
                 if (is_32bit_type(local_type))
                 {
                     *p_org++ = (uint8)local_offset;
@@ -1100,7 +883,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             p_org = p - 1;
             GET_LOCAL_INDEX_TYPE_AND_OFFSET();
             POP_TYPE(local_type);
-
+#if WASM_ENABLE_JIT != 0
+            ADD_EXTINFO(local_idx);
+#endif
             if (local_offset < 0x80)
             {
                 *p_org++ = EXT_OP_SET_LOCAL_FAST;
@@ -1127,6 +912,10 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             POP_TYPE(local_type);
             PUSH_TYPE(local_type);
 
+#if WASM_ENABLE_JIT != 0
+            ADD_EXTINFO(local_idx);
+#endif
+
             if (local_offset < 0x80)
             {
                 *p_org++ = EXT_OP_TEE_LOCAL_FAST;
@@ -1149,7 +938,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
         case WASM_OP_GET_GLOBAL:
         {
             p_org = p - 1;
-            read_leb_uint32(p, p_end, global_idx);
+            validate_leb_uint32(p, p_end, global_idx);
             if (global_idx >= global_count)
             {
                 wasm_set_exception(module, "unknown global");
@@ -1172,7 +961,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             bool is_mutable = false;
 
             p_org = p - 1;
-            read_leb_uint32(p, p_end, global_idx);
+            validate_leb_uint32(p, p_end, global_idx);
             if (global_idx >= global_count)
             {
                 wasm_set_exception(module, "unknown global");
@@ -1225,8 +1014,8 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
         case WASM_OP_F64_STORE:
         {
             CHECK_MEMORY();
-            read_leb_uint32(p, p_end, align);      /* align */
-            read_leb_uint32(p, p_end, mem_offset); /* offset */
+            validate_leb_uint32(p, p_end, align);      /* align */
+            validate_leb_uint32(p, p_end, mem_offset); /* offset */
             if (!check_memory_access_align(module, opcode, align))
             {
                 goto fail;
@@ -1312,14 +1101,14 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             break;
 
         case WASM_OP_I32_CONST:
-            read_leb_int32(p, p_end, i32_const);
+            validate_leb_int32(p, p_end, i32_const);
             (void)i32_const;
 
             PUSH_I32();
             break;
 
         case WASM_OP_I64_CONST:
-            read_leb_int64(p, p_end, i64_const);
+            validate_leb_int64(p, p_end, i64_const);
 
             PUSH_I64();
             break;
@@ -1562,7 +1351,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
         {
             uint32 opcode1;
 
-            read_leb_uint32(p, p_end, opcode1);
+            validate_leb_uint32(p, p_end, opcode1);
             switch (opcode1)
             {
             case WASM_OP_I32_TRUNC_SAT_S_F32:
@@ -1581,10 +1370,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             case WASM_OP_I64_TRUNC_SAT_U_F64:
                 POP_AND_PUSH(VALUE_TYPE_F64, VALUE_TYPE_I64);
                 break;
-#if WASM_ENABLE_BULK_MEMORY != 0
             case WASM_OP_MEMORY_INIT:
             {
-                read_leb_uint32(p, p_end, data_seg_idx);
+                validate_leb_uint32(p, p_end, data_seg_idx);
                 if (module->import_memory_count == 0 && module->memory_count == 0)
                     goto fail_unknown_memory;
 
@@ -1608,11 +1396,10 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
             }
             case WASM_OP_DATA_DROP:
             {
-                read_leb_uint32(p, p_end, data_seg_idx);
+                validate_leb_uint32(p, p_end, data_seg_idx);
                 if (data_seg_idx >= module->data_seg_count)
                 {
-                    wasm_set_exception(module,
-                                       "unknown data segment");
+                    wasm_set_exception(module, "unknown data segment");
                     goto fail;
                 }
 
@@ -1664,7 +1451,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
                 wasm_set_exception(module,
                                    "data count section required");
                 goto fail;
-#endif /* WASM_ENABLE_BULK_MEMORY */
 
             default:
                 wasm_set_exception(module, "unsupported opcode");
@@ -1716,7 +1502,6 @@ fail:
 bool wasm_validator(WASMModule *module)
 {
     uint32 i, j, index, str_len;
-    WASMTable *table;
     char *name;
     WASMFunction *func;
     WASMGlobal *global, *globals;

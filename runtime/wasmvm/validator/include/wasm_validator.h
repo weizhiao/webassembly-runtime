@@ -1,7 +1,10 @@
 #ifndef _WASM_VALIDATOR_H
-#define _WASM_VALIDATOR_h
+#define _WASM_VALIDATOR_H
 
 #include "wasm_type.h"
+#include "wasm_opcode.h"
+#include "wasm_memory.h"
+#include "wasm_exception.h"
 
 typedef struct BlockType
 {
@@ -59,7 +62,5 @@ typedef struct WASMLoaderContext
     uint32 branch_table_size;
 
 } WASMLoaderContext;
-
-bool wasm_validator(WASMModule *module);
 
 #endif

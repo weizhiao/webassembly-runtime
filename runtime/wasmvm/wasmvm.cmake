@@ -28,7 +28,7 @@ include(${WASI_DIR}/wasi.cmake)
 
 #本地函数调用
 set (NATIVE_DIR ${WASMVM_DIR}/native)
-include_directories(${NATIVE_DIR})
+include_directories(${NATIVE_DIR}/include)
 
 #wasm虚拟机应用接口
 set (APPLICATION_DIR ${WASMVM_DIR}/application)
@@ -40,9 +40,17 @@ include_directories(${EXCEPTION_DIR}/include)
 
 #解释器
 set (INTERP_DIR ${WASMVM_DIR}/interpreter)
-if (RUNTIME_BUILD_INTERP EQUAL 1)
-    include (${INTERP_DIR}/interp.cmake)
-endif ()
+include_directories(${INTERP_DIR}/include)
+
+#jit编译器
+if (RUNTIME_BUILD_JIT EQUAL 1)
+    set (JIT_DIR ${WASMVM_DIR}/jit)
+    include_directories(${JIT_DIR}/include)
+    file (GLOB_RECURSE JIT_SOURE
+    ${JIT_DIR}/src/*.c
+    ${JIT_DIR}/src/*.cpp
+    )
+endif()
 
 file (GLOB_RECURSE COMMON_SOURCE
     ${COMMON_DIR}/src/*.c
@@ -51,13 +59,14 @@ file (GLOB_RECURSE COMMON_SOURCE
     ${VALIDATOR_DIR}/src/*.c
     ${APPLICATION_DIR}/src/*.c
     ${INIT_DIR}/src/*.c
-    ${NATIVE_DIR}/*.c
+    ${NATIVE_DIR}/src/*.c
     ${EXCEPTION_DIR}/src/*.c
     ${EXECUTOR_DIR}/src/*.c
+    ${INTERP_DIR}/src/*.c
 )
 
 set (WASMVM_SOURCE 
-    ${INTERP_SOURCE}
     ${COMMON_SOURCE}
     ${WASI_SOURCE}
+    ${JIT_SOURE}
 )

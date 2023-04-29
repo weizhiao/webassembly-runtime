@@ -134,10 +134,11 @@ static volatile VoidFuncPtr invokeNative_Void =
 uint32
 get_libc_wasi_export_apis(NativeSymbol **p_libc_wasi_apis);
 
-bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func, uint32 *argv,
+bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, uint32 func_idx, uint32 *argv,
                                 uint32 *argv_ret)
 {
     WASMModule *module = exec_env->module_inst;
+    WASMFunction *func = module->functions + func_idx;
     uint64 argv_buf[32] = {0}, *argv1 = argv_buf, *stacks, size;
     uint32 *argv_src = argv, i, argc1, n_stacks = 0;
     uint32 result_count = func->result_count, param_count = func->param_count;
@@ -202,8 +203,12 @@ bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, const WASMFunction *func,
         stacks[n_stacks++] = *(uint64 *)argv_src;
         argv_src += 2;
     }
-
+#if WASM_ENABLE_JIT != 0
+    func_ptr = module->func_ptrs[func_idx];
+#else
     func_ptr = func->func_ptr;
+#endif
+
     if (result_count == 0)
     {
         invokeNative_Void(func_ptr, argv1, n_stacks);

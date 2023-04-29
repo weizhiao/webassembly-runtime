@@ -14,10 +14,8 @@
 #define VALUE_TYPE_VOID 0x40
 /* Used by AOT */
 #define VALUE_TYPE_I1 0x41
-/*  Used by loader to represent any type of i32/i64/f32/f64 */
-#define VALUE_TYPE_ANY 0x42
 
-//使用其他全局变量初始化的全局变量
+// 使用其他全局变量初始化的全局变量
 #define VALUE_TYPE_GLOBAL 0x43
 
 #define DEFAULT_NUM_BYTES_PER_PAGE 65536
@@ -54,13 +52,7 @@
 #define SECTION_TYPE_ELEMENT 9
 #define SECTION_TYPE_CODE 10
 #define SECTION_TYPE_DATA 11
-#if WASM_ENABLE_BULK_MEMORY != 0
 #define SECTION_TYPE_DATACOUNT 12
-#endif
-
-#define SUB_SECTION_TYPE_MODULE 0
-#define SUB_SECTION_TYPE_FUNC 1
-#define SUB_SECTION_TYPE_LOCAL 2
 
 #define IMPORT_KIND_FUNC 0
 #define IMPORT_KIND_TABLE 1
@@ -77,26 +69,23 @@
 #define LABEL_TYPE_IF 2
 #define LABEL_TYPE_FUNCTION 3
 
-typedef enum {
-    Wasm_Module_Bytecode = 0,
-    Wasm_Module_AoT,
-    Package_Type_Unknown = 0xFFFF
-} package_type_t;
-
-typedef enum {
+typedef enum
+{
     Wasm_Func = 0,
     Native_Func,
     External_Func
-}FuncKind;
+} FuncKind;
 
-typedef enum {
+typedef enum
+{
     Load = 0,
     Validate,
     Instantiate,
     Execute
-}WASMModuleStage;
+} WASMModuleStage;
 
-typedef union V128 {
+typedef union V128
+{
     int8 i8x16[16];
     int16 i16x8[8];
     int32 i32x8[4];
@@ -105,7 +94,8 @@ typedef union V128 {
     float64 f64x2[2];
 } V128;
 
-typedef union WASMValue {
+typedef union WASMValue
+{
     int32 i32;
     uint32 u32;
     uint32 global_index;
@@ -118,14 +108,16 @@ typedef union WASMValue {
     V128 v128;
 } WASMValue;
 
-typedef struct InitializerExpression {
+typedef struct InitializerExpression
+{
     uint8 init_expr_type;
     WASMValue u;
 } InitializerExpression;
 
-typedef struct WASMType {
+typedef struct WASMType
+{
     uint8 *param;
-    uint8 *result; 
+    uint8 *result;
     uint16 param_count;
     uint16 result_count;
     uint16 param_cell_num;
@@ -133,13 +125,15 @@ typedef struct WASMType {
     uint16 ref_count;
 } WASMType;
 
-typedef struct WASMExport {
+typedef struct WASMExport
+{
     char *name;
     uint8 kind;
     uint32 index;
 } WASMExport;
 
-typedef struct WASMElement {
+typedef struct WASMElement
+{
     /* 0 to 7 */
     uint32 mode;
     uint32 elem_type;
@@ -150,47 +144,24 @@ typedef struct WASMElement {
     uint32 *func_indexes;
 } WASMElement;
 
-typedef struct WASMDataSeg {
+typedef struct WASMDataSeg
+{
     uint32 memory_index;
     InitializerExpression base_offset;
     uint32 data_length;
     uint8 *data;
 } WASMDataSeg;
 
-typedef struct StringNode {
-    struct StringNode *next;
-    char *str;
-} StringNode, *StringList;
-
-typedef struct WASMBranchTable {
+typedef struct WASMBranchTable
+{
     uint8 *ip;
     uint32 stp;
     uint32 push;
     uint32 pop;
-}WASMBranchTable;
+} WASMBranchTable;
 
-
-/**
- * When LLVM JIT, WAMR compiler or AOT is enabled, we should ensure that
- * some offsets of the same field in the interpreter module instance and
- * aot module instance are the same, so that the LLVM JITed/AOTed code
- * can smoothly access the interpreter module instance.
- * Same for the memory instance and table instance.
- * We use the macro DefPointer to define some related pointer fields.
- */
-#if (WASM_ENABLE_JIT != 0 || WASM_ENABLE_WAMR_COMPILER != 0 \
-     || WASM_ENABLE_AOT != 0)                               \
-    && UINTPTR_MAX == UINT32_MAX
-/* Add u32 padding if LLVM JIT, WAMR compiler or AOT is enabled on
-   32-bit platform */
-#define DefPointer(type, field) \
-    type field;                 \
-    uint32 field##_padding
-#else
-#define DefPointer(type, field) type field
-#endif
-
-typedef enum WASMExceptionID {
+typedef enum WASMExceptionID
+{
     EXCE_UNREACHABLE = 0,
     EXCE_OUT_OF_MEMORY,
     EXCE_OUT_OF_BOUNDS_MEMORY_ACCESS,
@@ -213,12 +184,14 @@ typedef enum WASMExceptionID {
     EXCE_NUM,
 } WASMExceptionID;
 
-typedef union {
+typedef union
+{
     uint64 u64;
     uint32 u32[2];
 } MemBound;
 
-typedef struct WASMMemory {
+typedef struct WASMMemory
+{
     /* Number bytes per page */
     uint32 num_bytes_per_page;
     /* Current page count */
@@ -228,13 +201,14 @@ typedef struct WASMMemory {
     /* Memory data size */
     uint32 memory_data_size;
 
-    uint8 * memory_data;
+    uint8 *memory_data;
     /* Memory data end address */
-    uint8 * memory_data_end;
+    uint8 *memory_data_end;
 
-}WASMMemory, WASMMemoryImport;
+} WASMMemory, WASMMemoryImport;
 
-typedef struct WASMTable {
+typedef struct WASMTable
+{
     /* Current size */
     uint32 cur_size;
     /* Maximum size */
@@ -245,39 +219,56 @@ typedef struct WASMTable {
     uint8 elem_type;
 
     /* Table elements */
-    uint32 * table_data;
-}WASMTable, WASMTableImport;
+    uint32 *table_data;
+} WASMTable, WASMTableImport;
 
-typedef struct WASMGlobal {
+typedef struct WASMGlobal
+{
     /* value type, VALUE_TYPE_I32/I64/F32/F64 */
     uint8 type;
     /* mutable or constant */
     bool is_mutable;
-    /* data offset to base_addr of WASMMemoryInstance */
+    /* data offset to base_addr of WASMMemory */
     uint32 data_offset;
     /* initial value */
     WASMValue initial_value;
-}WASMGlobal, WASMGlobalImport;
+} WASMGlobal, WASMGlobalImport;
 
-typedef struct WASMFunction {
+#if WASM_ENABLE_JIT != 0
+typedef struct WASMBlock
+{
+    struct WASMBlock *next_block;
+    uint32 stack_num;
+    bool has_else_branch;
+} WASMBlock;
+
+typedef struct ExtInfo
+{
+    struct ExtInfo *next_op;
+    uint32 idx;
+} ExtInfo;
+#endif
+
+typedef struct WASMFunction
+{
 
     const char *module_name;
     const char *field_name;
-    /* signature from registered native symbols */
     const char *signature;
-    
+
+    uint32 func_type_index;
     WASMType *func_type;
 
     void *func_ptr;
     FuncKind func_kind;
 
     uint8 *code_end;
-    
-    //参数数量
+
+    // 参数数量
     uint16 param_count;
-    //返回值数量
+    // 返回值数量
     uint16 result_count;
-    
+
     uint16 local_count;
     /* cell num of parameters */
     uint16 param_cell_num;
@@ -293,27 +284,43 @@ typedef struct WASMFunction {
     uint8 *result_types;
     uint32 max_stack_cell_num;
     uint32 max_block_num;
+    uint32 max_stack_num;
+    WASMBranchTable *branch_table;
 
-    WASMBranchTable * branch_table;
+#if WASM_ENABLE_JIT
+    bool has_memory_operations;
+    bool has_op_memory_grow;
+    bool has_op_func_call;
+    bool has_op_call_indirect;
+    // 用于记录JIT需要使用的block数据
+    WASMBlock *blocks;
+    WASMBlock *last_block;
+    // 用于记录重写指令的数据
+    ExtInfo *op_info;
+    ExtInfo *last_op_info;
+#endif
+} WASMFunctionImport, WASMFunction;
 
-}WASMFunctionImport, WASMFunction;
-
-typedef struct WASMExportFuncInstance {
+typedef struct WASMExportFuncInstance
+{
     char *name;
     WASMFunction *function;
 } WASMExportFuncInstance;
 
-typedef struct WASMExportGlobInstance {
+typedef struct WASMExportGlobInstance
+{
     char *name;
     WASMGlobal *global;
 } WASMExportGlobInstance;
 
-typedef struct WASMExportTabInstance {
+typedef struct WASMExportTabInstance
+{
     char *name;
     WASMTable *table;
 } WASMExportTabInstance;
 
-typedef struct WASMExportMemInstance {
+typedef struct WASMExportMemInstance
+{
     char *name;
     WASMMemory *memory;
 } WASMExportMemInstance;
@@ -321,11 +328,27 @@ typedef struct WASMExportMemInstance {
 struct WASIContext;
 typedef struct WASIContext WASIContext;
 
-typedef struct WASMModule {
+#if WASM_ENABLE_JIT != 0
+struct WASMModule;
+struct JITCompContext;
+
+/* Orc JIT thread arguments */
+typedef struct OrcJitThreadArg
+{
+#if WASM_ENABLE_JIT != 0
+    struct JITCompContext *comp_ctx;
+#endif
+    struct WASMModule *module;
+    uint32 group_idx;
+} OrcJitThreadArg;
+#endif
+
+typedef struct WASMModule
+{
 
     WASMModuleStage module_stage;
 
-    //各种类型的数量
+    // 各种类型的数量
     uint32 type_count;
     uint32 function_count;
     uint32 table_count;
@@ -334,17 +357,15 @@ typedef struct WASMModule {
     uint32 export_count;
     uint32 element_count;
     uint32 data_seg_count;
-#if WASM_ENABLE_BULK_MEMORY != 0
     uint32 data_seg_count1;
-#endif
 
-    //各种导入的数量
+    // 各种导入的数量
     uint32 import_function_count;
     uint32 import_table_count;
     uint32 import_memory_count;
     uint32 import_global_count;
 
-    //各种类型
+    // 各种类型
     WASMType **types;
     WASMFunction *functions;
     WASMTable *tables;
@@ -355,16 +376,16 @@ typedef struct WASMModule {
     WASMDataSeg *data_segments;
     uint32 start_function;
 
-    //默认的栈大小
+    // 默认的栈大小
     uint32 default_value_stack_size;
     uint32 default_execution_stack_size;
 
-    //全局数据
+    // 全局数据
     uint8 *global_data;
 
     char cur_exception[EXCEPTION_BUF_LEN];
 
-    //WASI
+    // WASI
     WASIContext *wasi_ctx;
 
     uint32 export_func_count;
@@ -372,7 +393,30 @@ typedef struct WASMModule {
 
     bool possible_memory_grow;
 
-}WASMModule;
+#if WASM_ENABLE_JIT != 0
+    /* backend compilation threads */
+    korp_tid orcjit_threads[WASM_ORC_JIT_BACKEND_THREAD_NUM];
+    /* backend thread arguments */
+    OrcJitThreadArg orcjit_thread_args[WASM_ORC_JIT_BACKEND_THREAD_NUM];
+    /* whether to stop the compilation of backend threads */
+    bool orcjit_stop_compiling;
+    struct JITCompContext *comp_ctx;
+    /**
+     * func pointers of LLVM JITed (un-imported) functions
+     * for non Multi-Tier JIT mode:
+     *   each pointer is set to the lookuped llvm jit func ptr, note that it
+     *   is a stub and will trigger the actual compilation when it is called
+     * for Multi-Tier JIT mode:
+     *   each pointer is inited as call_to_fast_jit code block, when the llvm
+     *   jit func ptr is actually compiled, it is set to the compiled llvm jit
+     *   func ptr
+     */
+    void **func_ptrs;
+    /* whether the func pointers are compiled */
+    bool *func_ptrs_compiled;
+    uint32 *func_type_indexes;
+#endif
+} WASMModule;
 
 inline static unsigned
 align_uint(unsigned v, unsigned b)
@@ -381,19 +425,20 @@ align_uint(unsigned v, unsigned b)
     return (v + m) & ~m;
 }
 
-//返回value type的字节数
+// 返回value type的字节数
 inline static uint32
 wasm_value_type_size(uint8 value_type)
 {
-    switch (value_type) {
-        case VALUE_TYPE_I32:
-        case VALUE_TYPE_F32:
-            return sizeof(int32);
-        case VALUE_TYPE_I64:
-        case VALUE_TYPE_F64:
-            return sizeof(int64);
-        case VALUE_TYPE_VOID:
-            return 0;
+    switch (value_type)
+    {
+    case VALUE_TYPE_I32:
+    case VALUE_TYPE_F32:
+        return sizeof(int32);
+    case VALUE_TYPE_I64:
+    case VALUE_TYPE_F64:
+        return sizeof(int64);
+    case VALUE_TYPE_VOID:
+        return 0;
     }
     return 0;
 }
@@ -401,7 +446,18 @@ wasm_value_type_size(uint8 value_type)
 inline static uint16
 wasm_value_type_cell_num(uint8 value_type)
 {
-    return wasm_value_type_size(value_type) / 4;
+    switch (value_type)
+    {
+    case VALUE_TYPE_I32:
+    case VALUE_TYPE_F32:
+        return 1;
+    case VALUE_TYPE_I64:
+    case VALUE_TYPE_F64:
+        return 2;
+    case VALUE_TYPE_VOID:
+        return 0;
+    }
+    return 0;
 }
 
 inline static uint32
@@ -414,12 +470,11 @@ wasm_get_cell_num(const uint8 *types, uint32 type_count)
     return cell_num;
 }
 
-//检查类型是否为value
+// 检查类型是否为value
 static inline bool
 is_value_type(uint8 type)
 {
-    if (type == VALUE_TYPE_I32 || type == VALUE_TYPE_I64
-        || type == VALUE_TYPE_F32 || type == VALUE_TYPE_F64
+    if (type == VALUE_TYPE_I32 || type == VALUE_TYPE_I64 || type == VALUE_TYPE_F32 || type == VALUE_TYPE_F64
 #if WASM_ENABLE_REF_TYPES != 0
         || type == VALUE_TYPE_FUNCREF || type == VALUE_TYPE_EXTERNREF
 #endif
@@ -428,5 +483,4 @@ is_value_type(uint8 type)
     return false;
 }
 
-
-#endif 
+#endif
