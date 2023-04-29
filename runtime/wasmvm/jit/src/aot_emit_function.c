@@ -497,7 +497,7 @@ bool wasm_jit_call_import_function(JITCompContext *comp_ctx, JITFuncContext *fun
 }
 
 bool wasm_jit_compile_op_call(WASMModule *wasm_module, JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                              uint32 func_idx, bool tail_call)
+                              uint32 func_idx)
 {
     uint32 import_func_count = wasm_module->import_function_count;
     WASMFunction *wasm_func = wasm_module->functions + func_idx;
@@ -518,7 +518,7 @@ bool wasm_jit_compile_op_call(WASMModule *wasm_module, JITCompContext *comp_ctx,
     ext_ret_count = result_count > 1 ? result_count - 1 : 0;
     total_size =
         sizeof(LLVMValueRef) * (uint64)(param_count + 1 + ext_ret_count);
-    if (total_size >= UINT32_MAX || !(param_values = wasm_runtime_malloc((uint32)total_size)))
+    if (total_size >= UINT32_MAX || !(param_values = wasm_runtime_malloc(total_size)))
     {
         wasm_jit_set_last_error("allocate memory failed.");
         return false;

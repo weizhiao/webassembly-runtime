@@ -4,8 +4,12 @@ if (NOT DEFINED RUNTIME_BUILD_BULK_MEMORY)
 endif ()
 
 if (NOT DEFINED RUNTIME_BUILD_JIT)
-  set (RUNTIME_BUILD_JIT 1)
+  set (RUNTIME_BUILD_JIT 0)
 endif ()
+
+if(NOT DEFINED RUNTIME_BUILD_THREAD)
+  set (RUNTIME_BUILD_THREAD 1)
+endif()
 
 file (GLOB_RECURSE source_all ${PRODUCT_DIR}/main.c)
 set (MAIN_SOURCE ${source_all})

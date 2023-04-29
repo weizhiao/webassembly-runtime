@@ -224,7 +224,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
 
         case WASM_OP_CALL:
             read_leb_uint32(frame_ip, frame_ip_end, func_idx);
-            if (!wasm_jit_compile_op_call(wasm_module, comp_ctx, func_ctx, func_idx, false))
+            if (!wasm_jit_compile_op_call(wasm_module, comp_ctx, func_ctx, func_idx))
                 return false;
             break;
 
@@ -262,9 +262,12 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_GET_LOCAL:
-        case EXT_OP_GET_LOCAL_FAST:
-            GET_OP_INFO(local_idx);
             skip_leb_uint32(frame_ip, frame_ip_end);
+            goto get_local;
+        case EXT_OP_GET_LOCAL_FAST:
+            frame_ip++;
+        get_local:
+            GET_OP_INFO(local_idx);
             GET_LOCAL_TYPE(local_idx);
             snprintf(name, sizeof(name), "%s%d%s", "local", local_idx, "#");
             if (!(llvm_value = LLVMBuildLoad2(comp_ctx->builder, TO_LLVM_TYPE(value_type),
@@ -275,16 +278,15 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             }
 
             PUSH(llvm_value);
-
-            wasm_jit_value_top = func_ctx->value_stack - 1;
-            wasm_jit_value_top->is_local = true;
-            wasm_jit_value_top->local_idx = local_idx;
             break;
 
         case WASM_OP_SET_LOCAL:
-        case EXT_OP_SET_LOCAL_FAST:
-            GET_OP_INFO(local_idx);
             skip_leb_uint32(frame_ip, frame_ip_end);
+            goto set_local;
+        case EXT_OP_SET_LOCAL_FAST:
+            frame_ip++;
+        set_local:
+            GET_OP_INFO(local_idx);
             GET_LOCAL_TYPE(local_idx);
 
             POP(llvm_value);
@@ -299,9 +301,12 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_TEE_LOCAL:
-        case EXT_OP_TEE_LOCAL_FAST:
-            GET_OP_INFO(local_idx);
             skip_leb_uint32(frame_ip, frame_ip_end);
+            goto tee_local;
+        case EXT_OP_TEE_LOCAL_FAST:
+            frame_ip++;
+        tee_local:
+            GET_OP_INFO(local_idx);
             GET_LOCAL_TYPE(local_idx);
 
             POP(llvm_value);
@@ -1101,21 +1106,21 @@ bool wasm_jit_compile_wasm(WASMModule *module)
         }
     }
 
-    /* Run IR optimization before feeding in ORCJIT and AOT codegen */
-    if (comp_ctx->optimize)
-    {
-        /* Run passes for AOT/JIT mode.
-           TODO: Apply these passes in the do_ir_transform callback of
-           TransformLayer when compiling each jit function, so as to
-           speedup the launch process. Now there are two issues in the
-           JIT: one is memory leak in do_ir_transform, the other is
-           possible core dump. */
-        wasm_jit_apply_llvm_new_pass_manager(comp_ctx, comp_ctx->module);
+    // /* Run IR optimization before feeding in ORCJIT and AOT codegen */
+    // if (comp_ctx->optimize)
+    // {
+    //     /* Run passes for AOT/JIT mode.
+    //        TODO: Apply these passes in the do_ir_transform callback of
+    //        TransformLayer when compiling each jit function, so as to
+    //        speedup the launch process. Now there are two issues in the
+    //        JIT: one is memory leak in do_ir_transform, the other is
+    //        possible core dump. */
+    //     wasm_jit_apply_llvm_new_pass_manager(comp_ctx, comp_ctx->module);
 
-        /* Run specific passes for AOT indirect mode in last since general
-           optimization may create some intrinsic function calls like
-           llvm.memset, so let's remove these function calls here. */
-    }
+    //     /* Run specific passes for AOT indirect mode in last since general
+    //        optimization may create some intrinsic function calls like
+    //        llvm.memset, so let's remove these function calls here. */
+    // }
 
 #ifdef DUMP_MODULE
     LLVMDumpModule(comp_ctx->module);

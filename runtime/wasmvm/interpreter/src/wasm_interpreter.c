@@ -2566,8 +2566,8 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(WASM_OP_UNUSED_0x19)
             HANDLE_OP(WASM_OP_UNUSED_0x27)
             /* Used by fast interpreter */
-            HANDLE_OP(EXT_OP_SET_LOCAL_FAST_I64)
-            HANDLE_OP(EXT_OP_TEE_LOCAL_FAST_I64)
+            HANDLE_OP(EXT_OP_SET_LOCAL_FAST_64)
+            HANDLE_OP(EXT_OP_TEE_LOCAL_FAST_64)
             HANDLE_OP(EXT_OP_COPY_STACK_TOP)
             HANDLE_OP(EXT_OP_COPY_STACK_TOP_I64)
             HANDLE_OP(EXT_OP_COPY_STACK_VALUES)

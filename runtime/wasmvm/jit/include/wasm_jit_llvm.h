@@ -73,10 +73,6 @@ extern "C"
     typedef struct JITValue
     {
         LLVMValueRef value;
-        /* VALUE_TYPE_I32/I64/F32/F64/VOID */
-        uint8 type;
-        bool is_local;
-        uint32 local_idx;
     } JITValue;
 
     /**

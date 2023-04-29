@@ -455,8 +455,7 @@ fail:
     return NULL;
 }
 
-bool wasm_validator_code(WASMModule *module, WASMFunction *func,
-                         uint32 cur_func_idx)
+bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 {
     uint8 *p = (uint8 *)func->func_ptr, *p_end = func->code_end, *p_org;
     uint32 param_count, local_count, global_count;
@@ -1467,15 +1466,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func,
 
     if (loader_ctx->csp_num > 0)
     {
-        if (cur_func_idx < module->function_count - 1)
-            /* Function with missing end marker (between two functions) */
-            wasm_set_exception(module, "END opcode expected");
-        else
-            /* Function with missing end marker
-               (at EOF or end of code sections) */
-            wasm_set_exception(module,
-                               "unexpected end of section or function, "
-                               "or section size mismatch");
+        wasm_set_exception(module, "END opcode expected");
         goto fail;
     }
 
@@ -1498,6 +1489,29 @@ fail:
     (void)align;
     return false;
 }
+
+#if WASM_ENABLE_THREAD != 0
+void *wasm_validator_code_callback(void *arg)
+{
+    bool ret;
+    uint64 *args = (uint64 *)arg;
+    uint64 i = args[0];
+    WASMModule *module = (WASMModule *)args[1];
+    uint32 function_count = module->function_count;
+    WASMFunction *func = module->functions + module->import_function_count + i;
+    for (; i < function_count; i += WASM_VALIDATE_THREAD_NUM, func += WASM_VALIDATE_THREAD_NUM)
+    {
+        ret = wasm_validator_code(module, func);
+        if (!ret)
+        {
+            break;
+        }
+    }
+    os_thread_exit((void *)ret);
+    return NULL;
+}
+
+#endif
 
 bool wasm_validator(WASMModule *module)
 {
@@ -1578,15 +1592,39 @@ bool wasm_validator(WASMModule *module)
                 sizeof(WASMValue));
         }
     }
+#if WASM_ENABLE_THREAD != 0
+    korp_tid threads[WASM_VALIDATE_THREAD_NUM];
+    uint64 args[WASM_VALIDATE_THREAD_NUM][2];
+    bool ret_value;
+    void *temp_value;
+    for (i = 0; i < WASM_VALIDATE_THREAD_NUM; i++)
+    {
+        args[i][0] = (uint64)i;
+        args[i][1] = (uint64)module;
+        os_thread_create(&threads[i], wasm_validator_code_callback,
+                         (void *)args[i],
+                         APP_THREAD_STACK_SIZE_DEFAULT);
+    }
 
+    for (i = 0; i < WASM_VALIDATE_THREAD_NUM; i++)
+    {
+        os_thread_join(threads[i], &temp_value);
+        ret_value |= (bool)temp_value;
+    }
+    if (!ret_value)
+    {
+        goto fail;
+    }
+#else
     func = module->functions + module->import_function_count;
     for (i = 0; i < module->function_count; i++, func++)
     {
-        if (!wasm_validator_code(module, func, i))
+        if (!wasm_validator_code(module, func))
         {
             goto fail;
         }
     }
+#endif
 
     if (!module->possible_memory_grow)
     {

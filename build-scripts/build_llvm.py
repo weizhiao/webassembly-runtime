@@ -28,7 +28,7 @@ def clone_llvm(dst_dir, llvm_repo, llvm_branch):
 
 def build_llvm(llvm_dir, backends, projects):
     LLVM_COMPILE_OPTIONS = [
-        '-DCMAKE_BUILD_TYPE:STRING="Release"',
+        '-DCMAKE_BUILD_TYPE:STRING="Debug"',
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DLLVM_APPEND_VC_REV:BOOL=ON",
         "-DLLVM_BUILD_BENCHMARKS:BOOL=OFF",

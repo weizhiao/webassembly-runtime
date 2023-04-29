@@ -9,6 +9,10 @@
 #define WASM_ORC_JIT_COMPILE_THREAD_NUM 4
 #endif
 
+#ifndef WASM_ENABLE_THREAD
+#define WASM_ENABLE_THREAD 1
+#endif
+
 #ifndef LLVM_VERSION_MAJOR
 #define LLVM_VERSION_MAJOR 16
 #endif
@@ -16,6 +20,10 @@
 #ifndef WASM_ORC_JIT_BACKEND_THREAD_NUM
 /* The number of backend threads created by runtime */
 #define WASM_ORC_JIT_BACKEND_THREAD_NUM 4
+#endif
+
+#ifndef WASM_VALIDATE_THREAD_NUM
+#define WASM_VALIDATE_THREAD_NUM 4
 #endif
 
 #define DEFAULT_VALUE_STACK_SIZE (16 * 1024)

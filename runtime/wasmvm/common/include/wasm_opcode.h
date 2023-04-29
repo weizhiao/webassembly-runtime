@@ -3,7 +3,8 @@
 
 #include "wasm_type.h"
 
-typedef enum WASMOpcode {
+typedef enum WASMOpcode
+{
     /* control instructions */
     WASM_OP_UNREACHABLE = 0x00, /* unreachable */
     WASM_OP_NOP = 0x01,         /* nop */
@@ -239,10 +240,10 @@ typedef enum WASMOpcode {
 
     /* extend op code */
     EXT_OP_GET_LOCAL_FAST = 0xc7,
-    EXT_OP_SET_LOCAL_FAST_I64 = 0xc8,
+    EXT_OP_SET_LOCAL_FAST_64 = 0xc8,
     EXT_OP_SET_LOCAL_FAST = 0xc9,
     EXT_OP_TEE_LOCAL_FAST = 0xca,
-    EXT_OP_TEE_LOCAL_FAST_I64 = 0xcb,
+    EXT_OP_TEE_LOCAL_FAST_64 = 0xcb,
     EXT_OP_COPY_STACK_TOP = 0xcc,
     EXT_OP_COPY_STACK_TOP_I64 = 0xcd,
     EXT_OP_COPY_STACK_VALUES = 0xce,
@@ -259,7 +260,8 @@ typedef enum WASMOpcode {
     WASM_OP_ATOMIC_PREFIX = 0xfe,
 } WASMOpcode;
 
-typedef enum WASMMiscEXTOpcode {
+typedef enum WASMMiscEXTOpcode
+{
     WASM_OP_I32_TRUNC_SAT_S_F32 = 0x00,
     WASM_OP_I32_TRUNC_SAT_U_F32 = 0x01,
     WASM_OP_I32_TRUNC_SAT_S_F64 = 0x02,
@@ -280,7 +282,8 @@ typedef enum WASMMiscEXTOpcode {
     WASM_OP_TABLE_FILL = 0x11,
 } WASMMiscEXTOpcode;
 
-typedef enum WASMSimdEXTOpcode {
+typedef enum WASMSimdEXTOpcode
+{
     /* memory instruction */
     SIMD_v128_load = 0x00,
     SIMD_v128_load8x8_s = 0x01,
@@ -576,7 +579,8 @@ typedef enum WASMSimdEXTOpcode {
     SIMD_f64x2_convert_low_i32x4_u = 0xff,
 } WASMSimdEXTOpcode;
 
-typedef enum WASMAtomicEXTOpcode {
+typedef enum WASMAtomicEXTOpcode
+{
     /* atomic wait and notify */
     WASM_OP_ATOMIC_NOTIFY = 0x00,
     WASM_OP_ATOMIC_WAIT32 = 0x01,
@@ -862,10 +866,10 @@ typedef enum WASMAtomicEXTOpcode {
         HANDLE_OPCODE(WASM_OP_DROP_64),              /* 0xc5 */ \
         HANDLE_OPCODE(WASM_OP_SELECT_64),            /* 0xc6 */ \
         HANDLE_OPCODE(EXT_OP_GET_LOCAL_FAST),        /* 0xc7 */ \
-        HANDLE_OPCODE(EXT_OP_SET_LOCAL_FAST_I64),    /* 0xc8 */ \
+        HANDLE_OPCODE(EXT_OP_SET_LOCAL_FAST_64),     /* 0xc8 */ \
         HANDLE_OPCODE(EXT_OP_SET_LOCAL_FAST),        /* 0xc9 */ \
         HANDLE_OPCODE(EXT_OP_TEE_LOCAL_FAST),        /* 0xca */ \
-        HANDLE_OPCODE(EXT_OP_TEE_LOCAL_FAST_I64),    /* 0xcb */ \
+        HANDLE_OPCODE(EXT_OP_TEE_LOCAL_FAST_64),     /* 0xcb */ \
         HANDLE_OPCODE(EXT_OP_COPY_STACK_TOP),        /* 0xcc */ \
         HANDLE_OPCODE(EXT_OP_COPY_STACK_TOP_I64),    /* 0xcd */ \
         HANDLE_OPCODE(EXT_OP_COPY_STACK_VALUES),     /* 0xce */ \
@@ -878,7 +882,8 @@ typedef enum WASMAtomicEXTOpcode {
         HANDLE_OPCODE(EXT_OP_IF),                    /* 0xd5 */ \
         HANDLE_OPCODE(EXT_OP_BR_TABLE_CACHE),        /* 0xd6 */ \
     };                                                          \
-    do {                                                        \
+    do                                                          \
+    {                                                           \
         _name[WASM_OP_MISC_PREFIX] =                            \
             HANDLE_OPCODE(WASM_OP_MISC_PREFIX); /* 0xfc */      \
         _name[WASM_OP_ATOMIC_PREFIX] =                          \
@@ -886,4 +891,4 @@ typedef enum WASMAtomicEXTOpcode {
         DEF_DEBUG_BREAK_HANDLE(_name)                           \
     } while (0)
 
-#endif 
+#endif
