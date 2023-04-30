@@ -27,9 +27,6 @@ bool wasm_enlarge_memory(WASMModule *module, uint32 inc_page_count)
     uint64 total_size_new;
     bool ret = true;
 
-    if (!memory)
-        return false;
-
     memory_data_old = memory->memory_data;
     total_size_old = memory->memory_data_size;
 
@@ -43,8 +40,7 @@ bool wasm_enlarge_memory(WASMModule *module, uint32 inc_page_count)
         /* No need to enlarge memory */
         return true;
 
-    if (total_page_count < cur_page_count /* integer overflow */
-        || total_page_count > max_page_count)
+    if (total_page_count > max_page_count)
     {
         return false;
     }
@@ -243,7 +239,7 @@ void wasm_module_destory(WASMModule *module)
             }
         }
     case Validate:
-        //清除跳转表
+        // 清除跳转表
         function = module->functions + import_function_count;
         for (i = 0; i < define_function_count; i++, function++)
         {

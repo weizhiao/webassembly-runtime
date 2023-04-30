@@ -162,8 +162,7 @@ fail:
  * Create first JITBlock, or function block for the function
  */
 static bool
-wasm_jit_create_func_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                           WASMFunction *func, WASMType *func_type)
+wasm_jit_create_func_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, WASMType *func_type)
 {
     JITBlock *block = func_ctx->block_stack;
     uint32 param_count = func_type->param_count,
@@ -295,15 +294,42 @@ create_local_variables(JITCompContext *comp_ctx,
 }
 
 static bool
+create_global_info(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
+{
+    LLVMValueRef offset;
+    uint32 offset_of_global_data;
+    // 获取全局变量信息
+    offset_of_global_data = offsetof(WASMModule, global_data);
+
+    offset = I32_CONST(offset_of_global_data);
+    if (!(func_ctx->global_info = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
+                                                        func_ctx->wasm_module, &offset, 1, "global_base_addr_offset")))
+    {
+        wasm_jit_set_last_error("llvm build in bounds gep failed");
+        return false;
+    }
+
+    if (!(func_ctx->global_info = LLVMBuildBitCast(comp_ctx->builder, func_ctx->global_info, INT8_PPTR_TYPE,
+                                                   "global_base_addr_ptr")))
+    {
+        wasm_jit_set_last_error("llvm build in bounds gep failed");
+        return false;
+    }
+
+    func_ctx->global_info = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE,
+                                           func_ctx->global_info, "global_base_addr");
+
+    return true;
+}
+
+static bool
 create_memory_info(WASMModule *module, JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     LLVMValueRef offset;
     WASMFunction *func = func_ctx->wasm_func;
     LLVMTypeRef int8_pptr_type = comp_ctx->basic_types.int8_pptr_type;
     uint32 offset_of_memory_data;
-    uint32 offset_of_global_data;
-    bool mem_space_unchanged =
-        (!func->has_op_memory_grow && !func->has_op_func_call) || (!module->possible_memory_grow);
+    bool mem_space_unchanged = !module->has_op_memory_grow;
 
     func_ctx->mem_space_unchanged = mem_space_unchanged;
 
@@ -381,24 +407,6 @@ create_memory_info(WASMModule *module, JITCompContext *comp_ctx, JITFuncContext 
             wasm_jit_set_last_error("llvm build load failed");
             return false;
         }
-    }
-
-    // 获取全局变量信息
-    offset_of_global_data = offsetof(WASMModule, global_data);
-
-    offset = I32_CONST(offset_of_global_data);
-    if (!(func_ctx->global_info = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                                                        func_ctx->wasm_module, &offset, 1, "global_base_addr_offset")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
-
-    if (!(func_ctx->global_info = LLVMBuildBitCast(comp_ctx->builder, func_ctx->global_info, INT8_PTR_TYPE,
-                                                   "global_base_addr_ptr")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
     }
 
     return true;
@@ -517,7 +525,7 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
         goto fail;
     }
 
-    if (!wasm_jit_create_func_block(comp_ctx, func_ctx, wasm_func, func_type))
+    if (!wasm_jit_create_func_block(comp_ctx, func_ctx, func_type))
     {
         goto fail;
     }
@@ -556,7 +564,12 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
     }
 
     /* Create base addr, end addr, data size of mem, heap */
-    if (!create_memory_info(wasm_module, comp_ctx, func_ctx))
+    if (wasm_func->has_op_memory && !create_memory_info(wasm_module, comp_ctx, func_ctx))
+    {
+        goto fail;
+    }
+
+    if (!create_global_info(comp_ctx, func_ctx))
     {
         goto fail;
     }

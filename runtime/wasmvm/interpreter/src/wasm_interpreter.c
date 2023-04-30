@@ -1437,7 +1437,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
 
                 if (!wasm_enlarge_memory(module, delta))
                 {
-                    /* failed to memory.grow, return -1 */
                     PUSH_I32(-1);
                 }
                 else
@@ -2687,15 +2686,6 @@ llvm_jit_call_func_bytecode(WASMModule *module_inst,
     uint32 func_idx = (uint32)(function - module_inst->functions);
     bool ret;
 
-#if (WASM_ENABLE_DUMP_CALL_STACK != 0) || (WASM_ENABLE_PERF_PROFILING != 0)
-    if (!llvm_jit_alloc_frame(exec_env, function - module_inst->e->functions))
-    {
-        /* wasm operand stack overflow has been thrown,
-           no need to throw again */
-        return false;
-    }
-#endif
-
     if (ext_ret_count > 0)
     {
         uint32 cell_num = 0, i;
@@ -2749,21 +2739,12 @@ llvm_jit_call_func_bytecode(WASMModule *module_inst,
         {
         case VALUE_TYPE_I32:
         case VALUE_TYPE_F32:
-#if WASM_ENABLE_REF_TYPES != 0
-        case VALUE_TYPE_FUNCREF:
-        case VALUE_TYPE_EXTERNREF:
-#endif
             argv_ret++;
             break;
         case VALUE_TYPE_I64:
         case VALUE_TYPE_F64:
             argv_ret += 2;
             break;
-#if WASM_ENABLE_SIMD != 0
-        case VALUE_TYPE_V128:
-            argv_ret += 4;
-            break;
-#endif
         default:
             break;
         }
@@ -2818,8 +2799,8 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
     switch (function->func_kind)
     {
     case Wasm_Func:
-        wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
-        // llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
+        // wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
+        llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
         break;
     case Native_Func:
         uint32 func_idx = (uint32)(function - module_inst->functions);

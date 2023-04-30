@@ -9,12 +9,6 @@ bool memory_instantiate(WASMMemory *memory)
     num_bytes_per_page = memory->num_bytes_per_page;
     init_page_count = memory->cur_page_count;
 
-    if (max_page_count == (uint32)-1)
-    {
-        max_page_count = DEFAULT_MAX_PAGES;
-        memory->max_page_count = max_page_count;
-    }
-
     memory_data_size = (uint64)num_bytes_per_page * init_page_count;
     if (memory_data_size > 0 && !(memory->memory_data = wasm_runtime_malloc(memory_data_size)))
     {
@@ -63,47 +57,16 @@ bool memories_instantiate(WASMModule *module)
 
         if (data_seg->base_offset.init_expr_type == INIT_EXPR_TYPE_GET_GLOBAL)
         {
-
-            if (!globals || globals[data_seg->base_offset.u.global_index].type != VALUE_TYPE_I32)
-            {
-                wasm_set_exception(module,
-                                   "data segment does not fit");
-                goto fail;
-            }
-
-            base_offset =
-                globals[data_seg->base_offset.u.global_index].initial_value.i32;
+            base_offset = globals[data_seg->base_offset.u.global_index].initial_value.i32;
         }
         else
         {
             base_offset = (uint32)data_seg->base_offset.u.i32;
         }
 
-        /* check offset */
-        if (base_offset > memory_size)
-        {
-            LOG_DEBUG("base_offset(%d) > memory_size(%d)", base_offset,
-                      memory_size);
-            wasm_set_exception(module,
-                               "data segment does not fit");
-            goto fail;
-        }
-
-        /* check offset + length(could be zero) */
         length = data_seg->data_length;
-        if (base_offset + length > memory_size)
-        {
-            LOG_DEBUG("base_offset(%d) + length(%d) > memory_size(%d)",
-                      base_offset, length, memory_size);
-            wasm_set_exception(module,
-                               "data segment does not fit");
-            goto fail;
-        }
 
-        if (memory_data)
-        {
-            memcpy(memory_data + base_offset, data_seg->data, length);
-        }
+        memcpy(memory_data + base_offset, data_seg->data, length);
     }
 
     LOG_VERBOSE("Instantiate memory success.\n");

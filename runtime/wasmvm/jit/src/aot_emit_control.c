@@ -28,18 +28,31 @@ static void inline destory_jit_block(JITBlock *block)
         func_ctx->value_stack = func_ctx->value_stack_bottom + block->stack_num; \
     } while (0)
 
-#define POP_JITBLOCK()                                                                \
-    do                                                                                \
-    {                                                                                 \
-        JITBlock *_cur_block = func_ctx->block_stack - 1;                             \
-        func_ctx->value_stack = _cur_block->stack_num + func_ctx->value_stack_bottom; \
-        destory_jit_block(_cur_block);                                                \
-        func_ctx->block_stack--;                                                      \
+#define POP_JITBLOCK()                                    \
+    do                                                    \
+    {                                                     \
+        JITBlock *_cur_block = func_ctx->block_stack - 1; \
+        destory_jit_block(_cur_block);                    \
+        func_ctx->block_stack--;                          \
     } while (0)
 
 #define GET_CUR_JITBLOCK() func_ctx->block_stack - 1
 
 #define BR_TARGET_JITBLOCK(br_depth) func_ctx->block_stack - br_depth - 1
+
+#define HANDLE_POLYMORPHIC()                  \
+    do                                        \
+    {                                         \
+        cur_block->is_polymorphic = true;     \
+        if (cur_block->is_translate_else)     \
+        {                                     \
+            *frame_ip = cur_block->else_addr; \
+        }                                     \
+        else                                  \
+        {                                     \
+            *frame_ip = cur_block->end_addr;  \
+        }                                     \
+    } while (0)
 
 /* clang-format off */
 enum {
@@ -167,7 +180,6 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
                            uint32 result_count, uint8 *result_types)
 {
     JITBlock *block = func_ctx->block_stack;
-    bool has_else_branch;
     uint32 i, param_index;
     uint64 size;
     LLVMValueRef value;
@@ -180,14 +192,14 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
     block->result_count = result_count;
     block->result_types = result_types;
     block->stack_num = wasm_block->stack_num;
+    block->else_addr = wasm_block->else_addr;
+    block->end_addr = wasm_block->end_addr;
     block->else_param_phis = NULL;
     block->param_phis = NULL;
     block->result_phis = NULL;
     block->llvm_else_block = NULL;
     block->is_translate_else = false;
     block->is_polymorphic = false;
-
-    has_else_branch = wasm_block->has_else_branch;
 
     // 开始块
     format_block_name(name, sizeof(name), block_indexes[label_type], label_type,
@@ -199,8 +211,6 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
     format_block_name(name, sizeof(name), block_indexes[label_type],
                       label_type, LABEL_END);
     CREATE_BLOCK(block->llvm_end_block, name);
-    // 将结束块移动到开始块后
-    MOVE_BLOCK_AFTER(block->llvm_end_block, block->llvm_entry_block);
 
     if (label_type == LABEL_TYPE_BLOCK || label_type == LABEL_TYPE_LOOP)
     {
@@ -210,7 +220,7 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
     {
         POP_COND(value);
 
-        if (has_else_branch)
+        if (block->else_addr)
         {
             /* Create else block */
             format_block_name(name, sizeof(name), block_indexes[label_type],
@@ -293,7 +303,8 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
         {
             param_index = block->param_count - 1 - i;
             POP(value);
-            ADD_TO_PARAM_PHIS(block, value, param_index);
+            LLVMAddIncoming(block->param_phis[param_index], &value,
+                            &block_curr, 1);
             if (block->llvm_else_block)
             {
                 /* has else branch, add to else param phis */
@@ -303,14 +314,14 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
         }
     }
 
-    /* Push the new block to block stack */
-    PUSH_JITBLOCK(block);
-
     /* Push param phis to the new block */
     for (i = 0; i < block->param_count; i++)
     {
         PUSH(block->param_phis[i]);
     }
+
+    /* Push the new block to block stack */
+    PUSH_JITBLOCK(block);
 
     SET_BUILDER_POS(block->llvm_entry_block);
 
@@ -340,13 +351,13 @@ bool wasm_jit_compile_op_else(JITCompContext *comp_ctx, JITFuncContext *func_ctx
         ADD_TO_RESULT_PHIS(block, value, result_index);
     }
 
-    /* Jump to end block */
     BUILD_BR(block->llvm_end_block);
 
     // 理论上要清理
     RESAT_VALUE_BLOCK();
     for (i = 0; i < block->param_count; i++)
         PUSH(block->else_param_phis[i]);
+
     SET_BUILDER_POS(block->llvm_else_block);
 
     return true;
@@ -358,57 +369,61 @@ bool wasm_jit_compile_op_end(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     JITBlock *block = GET_CUR_JITBLOCK();
     LLVMValueRef value;
-    uint32 i, result_index;
+    uint32 i, result_index, result_count;
     bool ret;
+
+    result_count = block->result_count;
 
     if (block->is_polymorphic)
     {
+        SET_BUILDER_POS(block->llvm_end_block);
         POP_JITBLOCK();
         return true;
     }
 
     if (block->label_type == LABEL_TYPE_FUNCTION)
     {
-        ret = wasm_jit_compile_op_return(comp_ctx, func_ctx);
+        ret = wasm_jit_compile_op_return(comp_ctx, func_ctx, NULL);
         POP_JITBLOCK();
         return ret;
     }
 
+    // 将结束块移动到当前块后
+    MOVE_BLOCK_AFTER_CURR(block->llvm_end_block);
+
     /* Handle block result values */
     CREATE_RESULT_VALUE_PHIS(block);
-    for (i = 0; i < block->result_count; i++)
+    for (i = 0; i < result_count; i++)
     {
         value = NULL;
-        result_index = block->result_count - 1 - i;
+        result_index = result_count - 1 - i;
         POP(value);
         ADD_TO_RESULT_PHIS(block, value, result_index);
     }
 
+    for (i = 0; i < result_count; i++)
+    {
+        PUSH(block->result_phis[i]);
+    }
+
     /* Jump to the end block */
     BUILD_BR(block->llvm_end_block);
+    SET_BUILDER_POS(block->llvm_end_block);
+
     POP_JITBLOCK();
-    block = GET_CUR_JITBLOCK();
-    if (block->is_translate_else)
-    {
-        SET_BUILDER_POS(block->llvm_else_block);
-    }
-    else
-    {
-        SET_BUILDER_POS(block->llvm_entry_block);
-    }
 
     return true;
 fail:
     return false;
 }
 
-bool wasm_jit_compile_op_br(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint32 br_depth)
+bool wasm_jit_compile_op_br(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint32 br_depth, uint8 **frame_ip)
 {
     JITBlock *block_dst, *cur_block = GET_CUR_JITBLOCK();
     LLVMValueRef value_ret, value_param;
     uint32 i, param_index, result_index;
 
-    cur_block->is_polymorphic = true;
+    HANDLE_POLYMORPHIC();
     block_dst = BR_TARGET_JITBLOCK(br_depth);
 
     if (block_dst->label_type == LABEL_TYPE_LOOP)
@@ -440,7 +455,7 @@ fail:
     return false;
 }
 
-bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint32 br_depth)
+bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint32 br_depth, uint8 **frame_ip)
 {
     JITBlock *block_dst;
     LLVMValueRef value_cmp, value, *values = NULL;
@@ -461,8 +476,6 @@ bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ct
 
         if (block_dst->label_type == LABEL_TYPE_LOOP)
         {
-            /* Dest block is Loop block */
-            /* Handle Loop parameters */
             if (block_dst->param_count)
             {
                 size = sizeof(LLVMValueRef) * (uint64)block_dst->param_count;
@@ -532,7 +545,7 @@ bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ct
         if ((int32)LLVMConstIntGetZExtValue(value_cmp) != 0)
         {
             /* Compare value is not 0, condition is true, same as op_br */
-            return wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth);
+            return wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth, frame_ip);
         }
         else
         {
@@ -548,7 +561,7 @@ fail:
 }
 
 bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                  uint32 *br_depths, uint32 br_count)
+                                  uint32 *br_depths, uint32 br_count, uint8 **frame_ip)
 {
     uint32 i, j;
     LLVMValueRef value_switch, value_cmp, value_case, value, *values = NULL;
@@ -558,7 +571,7 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
     uint32 param_index, result_index;
     uint64 size;
 
-    cur_block->is_polymorphic = true;
+    HANDLE_POLYMORPHIC();
     target_block = BR_TARGET_JITBLOCK(br_depths[br_count]);
     default_llvm_block = target_block->label_type != LABEL_TYPE_LOOP
                              ? target_block->llvm_end_block
@@ -656,7 +669,7 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
         {
             br_depth = br_depths[depth_idx];
         }
-        return wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth);
+        return wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth, frame_ip);
     }
 fail:
     if (values)
@@ -664,8 +677,9 @@ fail:
     return false;
 }
 
-bool wasm_jit_compile_op_return(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
+bool wasm_jit_compile_op_return(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint8 **frame_ip)
 {
+    JITBlock *cur_block = GET_CUR_JITBLOCK();
     LLVMValueRef llvm_value;
     LLVMValueRef ret;
     WASMType *func_type;
@@ -674,6 +688,10 @@ bool wasm_jit_compile_op_return(JITCompContext *comp_ctx, JITFuncContext *func_c
     func_type = func_ctx->wasm_func->func_type;
     result_count = func_type->result_count;
     param_count = func_type->param_count;
+    if (frame_ip)
+    {
+        HANDLE_POLYMORPHIC();
+    }
 
     if (result_count)
     {
@@ -712,10 +730,10 @@ fail:
     return false;
 }
 
-bool wasm_jit_compile_op_unreachable(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
+bool wasm_jit_compile_op_unreachable(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint8 **frame_ip)
 {
     JITBlock *cur_block = GET_CUR_JITBLOCK();
-    cur_block->is_polymorphic = true;
+    HANDLE_POLYMORPHIC();
     if (!wasm_jit_emit_exception(comp_ctx, func_ctx, EXCE_UNREACHABLE, false, NULL,
                                  NULL))
         return false;

@@ -49,8 +49,6 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMTypeRef param_types[2], ret_type, func_type, func_ptr_type;
     LLVMValueRef param_values[2];
 
-    CHECK_LLVM_CONST(exce_id);
-
     /* Create got_exception block if needed */
     if (!func_ctx->got_exception_block)
     {

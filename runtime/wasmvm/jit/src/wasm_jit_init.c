@@ -95,6 +95,8 @@ bool init_llvm_jit_functions_stage2(WASMModule *module)
         return false;
     }
 
+    wasm_jit_emit_llvm_file(module->comp_ctx, "test.text");
+
     for (i = 0; i < define_function_count; i++)
     {
         LLVMOrcJITTargetAddress func_addr = 0;

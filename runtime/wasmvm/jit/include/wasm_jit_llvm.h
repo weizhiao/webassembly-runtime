@@ -93,6 +93,9 @@ extern "C"
         bool is_translate_else;
         bool is_polymorphic;
 
+        uint8 *else_addr;
+        uint8 *end_addr;
+
         /* LLVM label points to code begin */
         LLVMBasicBlockRef llvm_entry_block;
         /* LLVM label points to code else */

@@ -28,7 +28,7 @@ def clone_llvm(dst_dir, llvm_repo, llvm_branch):
 
 def build_llvm(llvm_dir, backends, projects):
     LLVM_COMPILE_OPTIONS = [
-        '-DCMAKE_BUILD_TYPE:STRING="Debug"',
+        '-DCMAKE_BUILD_TYPE:STRING="Release"',
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DLLVM_APPEND_VC_REV:BOOL=ON",
         "-DLLVM_BUILD_BENCHMARKS:BOOL=OFF",
@@ -87,7 +87,7 @@ def build_llvm(llvm_dir, backends, projects):
     print(f"{CONFIG_CMD}")
     subprocess.check_call(shlex.split(CONFIG_CMD), cwd=build_dir)
 
-    BUILD_CMD = f"cmake --build . --target package --parallel {os.cpu_count()}"
+    BUILD_CMD = f"cmake --build . --target package --parallel {8}"
     subprocess.check_call(shlex.split(BUILD_CMD), cwd=build_dir)
 
     return build_dir

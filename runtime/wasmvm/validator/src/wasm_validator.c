@@ -15,21 +15,39 @@
         func->last_op_info = _op_info;                            \
     } while (0)
 
-#define INIT_BLOCK_IN_FUNCTION()                                                  \
-    do                                                                            \
-    {                                                                             \
-        func->blocks = func->last_block = wasm_runtime_malloc(sizeof(WASMBlock)); \
+#define INIT_BLOCK_IN_FUNCTION()                                    \
+    do                                                              \
+    {                                                               \
+        WASMBlock *_block = wasm_runtime_malloc(sizeof(WASMBlock)); \
+        _block->next_block = NULL;                                  \
+        _block->pre_block = NULL;                                   \
+        _block->is_set = false;                                     \
+        func->blocks = func->last_block = _block;                   \
     } while (0)
 
-#define ADD_BLOCK_IN_FUNCTION(cur_block)                               \
-    do                                                                 \
-    {                                                                  \
-        WASMBlock *_block = wasm_runtime_malloc(sizeof(WASMBlock));    \
-        _block->stack_num = cur_block->stack_num;                      \
-        _block->has_else_branch = cur_block->else_addr ? true : false; \
-        _block->next_block = NULL;                                     \
-        func->last_block->next_block = _block;                         \
-        func->last_block = _block;                                     \
+#define ADD_BLOCK_IN_FUNCTION()                                     \
+    do                                                              \
+    {                                                               \
+        WASMBlock *_block = wasm_runtime_malloc(sizeof(WASMBlock)); \
+        _block->pre_block = func->last_block;                       \
+        _block->next_block = NULL;                                  \
+        _block->is_set = false;                                     \
+        func->last_block->next_block = _block;                      \
+        func->last_block = _block;                                  \
+    } while (0)
+
+#define SET_BLOCK_IN_FUNCTION(cur_block)          \
+    do                                            \
+    {                                             \
+        WASMBlock *_block = func->last_block;     \
+        while (_block->is_set)                    \
+        {                                         \
+            _block = _block->pre_block;           \
+        }                                         \
+        _block->is_set = true;                    \
+        _block->stack_num = cur_block->stack_num; \
+        _block->else_addr = cur_block->else_addr; \
+        _block->end_addr = cur_block->end_addr;   \
     } while (0)
 #endif
 
@@ -157,7 +175,7 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
         local_offset = local_offsets[local_idx];                 \
     } while (0)
 
-static bool
+static inline bool
 check_memory(WASMModule *module)
 {
     if (module->memory_count == 0 && module->import_memory_count == 0)
@@ -489,6 +507,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
 #if WASM_ENABLE_JIT != 0
     INIT_BLOCK_IN_FUNCTION();
+    ADD_BLOCK_IN_FUNCTION();
     func->op_info = func->last_op_info = wasm_runtime_malloc(sizeof(ExtInfo));
 #endif
 
@@ -550,8 +569,7 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
             PUSH_BLOCK(loader_ctx, LABEL_TYPE_BLOCK + (opcode - WASM_OP_BLOCK), block_type, p);
 
 #if WASM_ENABLE_JIT != 0
-            BranchBlock *cur_block = loader_ctx->frame_csp - 1;
-            ADD_BLOCK_IN_FUNCTION(cur_block);
+            ADD_BLOCK_IN_FUNCTION();
 #endif
 
             /* Pass parameters to block */
@@ -641,11 +659,11 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
                 cur_block->branch_table_else_idx = loader_ctx->branch_table_num;
             }
 
-            if (cur_block->label_type == LABEL_TYPE_LOOP)
-                cur_block->end_addr = cur_block->start_addr;
-            else
-                cur_block->end_addr = p - 1;
+            cur_block->end_addr = p - 1;
 
+#if WASM_ENABLE_JIT != 0
+            SET_BLOCK_IN_FUNCTION(cur_block);
+#endif
             POP_BLOCK();
 
             if (loader_ctx->csp_num == 0 && p < p_end)
@@ -1013,6 +1031,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
         case WASM_OP_F64_STORE:
         {
             CHECK_MEMORY();
+#if WASM_ENABLE_JIT != 0
+            func->has_op_memory = true;
+#endif
             validate_leb_uint32(p, p_end, align);      /* align */
             validate_leb_uint32(p, p_end, mem_offset); /* offset */
             if (!check_memory_access_align(module, opcode, align))
@@ -1083,25 +1104,22 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
             }
             PUSH_I32();
 
-            module->possible_memory_grow = true;
             break;
 
         case WASM_OP_MEMORY_GROW:
             CHECK_MEMORY();
+            module->has_op_memory_grow = true;
             if (*p++ != 0x00)
             {
-                wasm_set_exception(module,
-                                   "zero byte expected");
+                wasm_set_exception(module, "zero byte expected");
                 goto fail;
             }
             POP_AND_PUSH(VALUE_TYPE_I32, VALUE_TYPE_I32);
 
-            module->possible_memory_grow = true;
             break;
 
         case WASM_OP_I32_CONST:
             validate_leb_int32(p, p_end, i32_const);
-            (void)i32_const;
 
             PUSH_I32();
             break;
@@ -1380,14 +1398,15 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
                 if (data_seg_idx >= module->data_seg_count)
                 {
-                    wasm_set_exception(module,
-                                       "unknown data segment");
+                    wasm_set_exception(module, "unknown data segment");
                     goto fail;
                 }
 
                 if (module->data_seg_count1 == 0)
                     goto fail_data_cnt_sec_require;
-
+#if WASM_ENABLE_JIT != 0
+                func->has_op_memory = true;
+#endif
                 POP_I32();
                 POP_I32();
                 POP_I32();
@@ -1415,7 +1434,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
                 if (module->import_memory_count == 0 && module->memory_count == 0)
                     goto fail_unknown_memory;
-
+#if WASM_ENABLE_JIT != 0
+                func->has_op_memory = true;
+#endif
                 POP_I32();
                 POP_I32();
                 POP_I32();
@@ -1431,7 +1452,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
                 {
                     goto fail_unknown_memory;
                 }
-
+#if WASM_ENABLE_JIT != 0
+                func->has_op_memory = true;
+#endif
                 POP_I32();
                 POP_I32();
                 POP_I32();
@@ -1625,24 +1648,6 @@ bool wasm_validator(WASMModule *module)
         }
     }
 #endif
-
-    if (!module->possible_memory_grow)
-    {
-        WASMMemory *memory = module->memories;
-
-        for (i = 0; i < module->memory_count; i++, memory++)
-        {
-            if (memory->cur_page_count < DEFAULT_MAX_PAGES)
-                memory->num_bytes_per_page *= memory->cur_page_count;
-            else
-                memory->num_bytes_per_page = UINT32_MAX;
-
-            if (memory->cur_page_count > 0)
-                memory->cur_page_count = memory->max_page_count = 1;
-            else
-                memory->cur_page_count = memory->max_page_count = 0;
-        }
-    }
 
     LOG_VERBOSE("Validate success.\n");
     return true;

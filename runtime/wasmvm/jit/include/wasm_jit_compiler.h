@@ -284,10 +284,6 @@ bool wasm_jit_emit_llvm_file(JITCompContext *comp_ctx, const char *file_name);
 bool wasm_jit_emit_wasm_jit_file(JITCompContext *comp_ctx, WASMModule *wasm_module,
                                  const char *file_name);
 
-uint8 *
-wasm_jit_emit_wasm_jit_file_buf(JITCompContext *comp_ctx, WASMModule *wasm_module,
-                                uint32 *p_wasm_jit_file_size);
-
 bool wasm_jit_emit_object_file(JITCompContext *comp_ctx, char *file_name);
 
 char *

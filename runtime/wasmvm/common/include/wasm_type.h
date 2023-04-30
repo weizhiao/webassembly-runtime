@@ -238,8 +238,11 @@ typedef struct WASMGlobal
 typedef struct WASMBlock
 {
     struct WASMBlock *next_block;
+    struct WASMBLOCK *pre_block;
+    uint8 *end_addr;
+    uint8 *else_addr;
     uint32 stack_num;
-    bool has_else_branch;
+    bool is_set;
 } WASMBlock;
 
 typedef struct ExtInfo
@@ -289,7 +292,7 @@ typedef struct WASMFunction
 
 #if WASM_ENABLE_JIT
     bool has_memory_operations;
-    bool has_op_memory_grow;
+    bool has_op_memory;
     bool has_op_func_call;
     bool has_op_call_indirect;
     // 用于记录JIT需要使用的block数据
@@ -391,9 +394,8 @@ typedef struct WASMModule
     uint32 export_func_count;
     WASMExportFuncInstance *export_functions;
 
-    bool possible_memory_grow;
-
 #if WASM_ENABLE_JIT != 0
+    bool has_op_memory_grow;
     /* backend compilation threads */
     korp_tid orcjit_threads[WASM_ORC_JIT_BACKEND_THREAD_NUM];
     /* backend thread arguments */

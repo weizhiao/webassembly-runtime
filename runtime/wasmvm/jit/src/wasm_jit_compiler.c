@@ -117,11 +117,14 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
     LLVMValueRef llvm_value;
     LLVMValueRef res;
     WASMType *wasm_type = NULL;
+    JITBlock *start_block = func_ctx->block_stack - 1;
+    start_block->end_addr = wasm_block->end_addr;
+    wasm_block = wasm_block->next_block;
 
     /* Start to translate the opcodes */
     LLVMPositionBuilderAtEnd(
         comp_ctx->builder,
-        (func_ctx->block_stack - 1)->llvm_entry_block);
+        start_block->llvm_entry_block);
     while (frame_ip < frame_ip_end)
     {
         opcode = *frame_ip++;
@@ -129,7 +132,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
         switch (opcode)
         {
         case WASM_OP_UNREACHABLE:
-            if (!wasm_jit_compile_op_unreachable(comp_ctx, func_ctx))
+            if (!wasm_jit_compile_op_unreachable(comp_ctx, func_ctx, &frame_ip))
                 return false;
             break;
 
@@ -187,13 +190,13 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
 
         case WASM_OP_BR:
             read_leb_uint32(frame_ip, frame_ip_end, br_depth);
-            if (!wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth))
+            if (!wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth, &frame_ip))
                 return false;
             break;
 
         case WASM_OP_BR_IF:
             read_leb_uint32(frame_ip, frame_ip_end, br_depth);
-            if (!wasm_jit_compile_op_br_if(comp_ctx, func_ctx, br_depth))
+            if (!wasm_jit_compile_op_br_if(comp_ctx, func_ctx, br_depth, &frame_ip))
                 return false;
             break;
 
@@ -208,7 +211,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
                 br_depths[i] = *frame_ip++;
 
             if (!wasm_jit_compile_op_br_table(comp_ctx, func_ctx, br_depths,
-                                              br_count))
+                                              br_count, &frame_ip))
             {
                 wasm_runtime_free(br_depths);
                 return false;
@@ -218,7 +221,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_RETURN:
-            if (!wasm_jit_compile_op_return(comp_ctx, func_ctx))
+            if (!wasm_jit_compile_op_return(comp_ctx, func_ctx, &frame_ip))
                 return false;
             break;
 

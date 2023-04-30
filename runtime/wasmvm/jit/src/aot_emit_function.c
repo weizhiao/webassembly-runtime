@@ -314,13 +314,6 @@ wasm_jit_call_define_function(JITCompContext *comp_ctx, JITFuncContext *func_ctx
         return false;
     }
 
-    /* Check whether there was exception thrown when executing
-           the function */
-    if (!check_exception_thrown(comp_ctx, func_ctx))
-    {
-        return false;
-    }
-
     if (func_type->result_count > 0)
     {
         /* Push the first result to stack */

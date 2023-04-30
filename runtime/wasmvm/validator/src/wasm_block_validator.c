@@ -46,6 +46,7 @@ bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx)
 {
     BranchBlock *frame_csp;
     WASMBranchTable *branch_table;
+    uint8 *end_addr;
     uint32 i;
     if (ctx->csp_num < 1)
     {
@@ -59,6 +60,11 @@ bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx)
     if (frame_csp->label_type != LABEL_TYPE_LOOP)
     {
         frame_csp->branch_table_end_idx = ctx->branch_table_num;
+        end_addr = frame_csp->end_addr;
+    }
+    else
+    {
+        end_addr = frame_csp->start_addr;
     }
 
     for (i = 0; i < frame_csp->table_queue_num; i++)
@@ -71,7 +77,7 @@ bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx)
         case WASM_OP_BR:
         case WASM_OP_BR_IF:
         case WASM_OP_BR_TABLE:
-            branch_table->ip = frame_csp->end_addr;
+            branch_table->ip = end_addr;
             branch_table->stp = frame_csp->branch_table_end_idx;
             break;
         case WASM_OP_IF:
@@ -79,7 +85,7 @@ bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx)
             branch_table->stp = frame_csp->branch_table_else_idx;
             break;
         case WASM_OP_ELSE:
-            branch_table->ip = frame_csp->end_addr;
+            branch_table->ip = end_addr;
             branch_table->stp = frame_csp->branch_table_end_idx;
             break;
         default:
