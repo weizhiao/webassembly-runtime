@@ -12,7 +12,6 @@ bool load_memory_section(const uint8 *buf, const uint8 *buf_end, WASMModule *mod
 
     if (memory_count)
     {
-
         /* load each memory */
         memory = module->memories + module->import_memory_count;
         for (i = 0; i < memory_count; i++, memory++)

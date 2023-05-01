@@ -17,6 +17,89 @@
         }                                                                   \
     } while (0)
 
+static bool jit_call_indirect(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
+                              WASMType *wasm_type, uint32 func_idx, LLVMValueRef *llvm_param_values, LLVMValueRef *llvm_ret_values)
+{
+    LLVMTypeRef llvm_func_type, llvm_ret_type;
+    LLVMTypeRef import_func_param_types[4];
+    LLVMValueRef import_func_param_values[4], llvm_func;
+    LLVMTypeRef func_ptr_type, ret_ptr_type, llvm_param_ptr_type;
+    LLVMValueRef llvm_res, llvm_ret_idx, llvm_ret_ptr, llvm_param_idx, llvm_param_ptr;
+    LLVMValueRef llvm_func_idx;
+    uint32 cell_num, param_count, result_count, i;
+    uint8 *wasm_param_types, *wasm_result_types;
+    char buf[32];
+
+    llvm_func_idx = I32_CONST(func_idx);
+    param_count = wasm_type->param_count;
+    result_count = wasm_type->result_count;
+    wasm_param_types = wasm_type->param;
+    wasm_result_types = wasm_type->result;
+    import_func_param_types[0] = comp_ctx->exec_env_type; /* exec_env */
+    import_func_param_types[1] = I32_TYPE;                /* func_idx */
+    import_func_param_types[2] = INT32_PTR_TYPE;          /* argv */
+    import_func_param_types[3] = INT32_PTR_TYPE;          /* argv_ret */
+
+    llvm_func_type = LLVMFunctionType(INT8_TYPE, import_func_param_types, 4, false);
+
+    /* prepare function pointer */
+    func_ptr_type = LLVMPointerType(llvm_func_type, 0);
+
+    /* JIT mode, call the function directly */
+    llvm_func = I64_CONST((uint64)(uintptr_t)wasm_runtime_invoke_native);
+    llvm_func = LLVMConstIntToPtr(llvm_func, func_ptr_type);
+
+    cell_num = 0;
+    for (i = 0; i < param_count; i++)
+    {
+        llvm_param_idx = I32_CONST(cell_num);
+        llvm_param_ptr_type = LLVMPointerType(TO_LLVM_TYPE(wasm_param_types[i]), 0);
+
+        snprintf(buf, sizeof(buf), "%s%d", "elem", i);
+        llvm_param_ptr = LLVMBuildInBoundsGEP2(comp_ctx->builder, I32_TYPE,
+                                               func_ctx->argv_buf, &llvm_param_idx, 1, buf);
+        llvm_param_ptr = LLVMBuildBitCast(comp_ctx->builder, llvm_param_ptr,
+                                          llvm_param_ptr_type, buf);
+
+        llvm_res = LLVMBuildStore(comp_ctx->builder, llvm_param_values[i + 1],
+                                  llvm_param_ptr);
+
+        LLVMSetAlignment(llvm_res, 1);
+
+        cell_num += wasm_value_type_cell_num(wasm_param_types[i]);
+    }
+
+    // 都使用argv_buf
+    import_func_param_values[0] = func_ctx->exec_env;
+    import_func_param_values[1] = llvm_func_idx;
+    import_func_param_values[2] = func_ctx->argv_buf;
+    import_func_param_values[3] = func_ctx->argv_buf;
+    llvm_res = LLVMBuildCall2(comp_ctx->builder, llvm_func_type, llvm_func,
+                              import_func_param_values, 4, "res");
+
+    // 返回参数全存在argv_buf中
+    cell_num = 0;
+    for (i = 0; i < result_count; i++)
+    {
+        llvm_ret_type = TO_LLVM_TYPE(wasm_result_types[i]);
+        llvm_ret_idx = I32_CONST(cell_num);
+        ret_ptr_type = LLVMPointerType(llvm_ret_type, 0);
+        snprintf(buf, sizeof(buf), "argv_ret%d", i);
+
+        llvm_ret_ptr = LLVMBuildInBoundsGEP2(comp_ctx->builder, I32_TYPE,
+                                             func_ctx->argv_buf, &llvm_ret_idx, 1, buf);
+
+        llvm_ret_ptr = LLVMBuildBitCast(comp_ctx->builder, llvm_ret_ptr,
+                                        ret_ptr_type, buf);
+
+        snprintf(buf, sizeof(buf), "ret%d", i);
+        llvm_ret_values[i] = LLVMBuildLoad2(comp_ctx->builder, llvm_ret_type, llvm_ret_ptr, buf);
+        cell_num += wasm_value_type_cell_num(wasm_result_types[i]);
+    }
+
+    return true;
+}
+
 bool wasm_check_app_addr_and_convert(WASMModule *module_inst, bool is_str,
                                      uint32 app_buf_addr, uint32 app_buf_size,
                                      void **p_native_addr)
@@ -498,7 +581,8 @@ bool wasm_jit_compile_op_call(WASMModule *wasm_module, JITCompContext *comp_ctx,
     WASMType *func_type = wasm_func->func_type;
     LLVMTypeRef *param_types = NULL;
     LLVMTypeRef ext_ret_ptr_type;
-    LLVMValueRef *param_values = NULL;
+    LLVMValueRef *llvm_param_values = NULL;
+    LLVMValueRef *llvm_ret_values = NULL;
     LLVMValueRef ext_ret_ptr, ext_ret_idx;
     int32 i, j = 0, param_count, result_count, ext_ret_count;
     uint64 total_size;
@@ -511,18 +595,17 @@ bool wasm_jit_compile_op_call(WASMModule *wasm_module, JITCompContext *comp_ctx,
     ext_ret_count = result_count > 1 ? result_count - 1 : 0;
     total_size =
         sizeof(LLVMValueRef) * (uint64)(param_count + 1 + ext_ret_count);
-    if (total_size >= UINT32_MAX || !(param_values = wasm_runtime_malloc(total_size)))
-    {
-        wasm_jit_set_last_error("allocate memory failed.");
-        return false;
-    }
+    llvm_param_values = wasm_runtime_malloc(total_size);
+    total_size = sizeof(LLVMValueRef) * result_count;
+    if (total_size > 0)
+        llvm_ret_values = wasm_runtime_malloc(total_size);
 
     // 第一个参数
-    param_values[j++] = func_ctx->exec_env;
+    llvm_param_values[j++] = func_ctx->exec_env;
 
     // 获得参数
     for (i = param_count - 1; i >= 0; i--)
-        POP(param_values[i + j]);
+        POP(llvm_param_values[i + j]);
 
     if (ext_ret_count > 0)
     {
@@ -560,272 +643,35 @@ bool wasm_jit_compile_op_call(WASMModule *wasm_module, JITCompContext *comp_ctx,
                 wasm_jit_set_last_error("llvm build bit cast failed.");
                 goto fail;
             }
-            param_values[param_count + 1 + i] = ext_ret_ptr;
+            llvm_param_values[param_count + 1 + i] = ext_ret_ptr;
             cell_num += wasm_value_type_cell_num(ext_ret_types[i]);
         }
     }
 
+    // jit_call_indirect(comp_ctx, func_ctx, wasm_func->func_type, func_idx, llvm_param_values, llvm_ret_values);
+
+    // for (i = 0; i < result_count; i++)
+    //     PUSH(llvm_ret_values[i]);
     if (func_idx < import_func_count)
     {
-        ret = wasm_jit_call_import_function(comp_ctx, func_ctx, wasm_func, param_values,
+        ret = wasm_jit_call_import_function(comp_ctx, func_ctx, wasm_func, llvm_param_values,
                                             func_idx, ext_ret_types);
     }
     else
     {
-        ret = wasm_jit_call_define_function(comp_ctx, func_ctx, wasm_func, param_values,
+        ret = wasm_jit_call_define_function(comp_ctx, func_ctx, wasm_func, llvm_param_values,
                                             func_idx - import_func_count, ext_ret_types);
     }
-
+    return true;
 fail:
     if (param_types)
         wasm_runtime_free(param_types);
-    if (param_values)
-        wasm_runtime_free(param_values);
+    if (llvm_param_values)
+        wasm_runtime_free(llvm_param_values);
+    if (llvm_ret_values)
+        wasm_runtime_free(llvm_ret_values);
     return ret;
 }
-
-// bool jit_call_indirect(WASMExecEnv *exec_env, uint32 tbl_idx, uint32 table_elem_idx,
-//                        uint32 argc, uint32 *argv)
-// {
-//     WASMModule *wasm_module = exec_env->module_inst;
-//     WASMFunction *wasm_func;
-//     WASMType *func_type;
-//     WASMTable *tbl_inst;
-//     void **func_ptrs = wasm_module->func_ptrs, *func_ptr;
-//     uint32 func_idx, ext_ret_count;
-//     bool ret;
-
-//     tbl_inst = wasm_module->tables + tbl_idx;
-
-//     if (table_elem_idx >= tbl_inst->cur_size)
-//     {
-//         goto fail;
-//     }
-
-//     func_idx = tbl_inst->table_data[table_elem_idx];
-//     if (func_idx == NULL_REF)
-//     {
-//         goto fail;
-//     }
-
-//     wasm_func = wasm_module->functions + func_idx;
-//     func_type = wasm_func->func_type;
-
-//     // 后续要修改
-//     func_ptr = func_ptrs[func_idx];
-
-//     ext_ret_count = func_type->result_count > 1 ? func_type->result_count - 1 : 0;
-//     if (ext_ret_count > 0)
-//     {
-//         uint32 argv1_buf[32], *argv1 = argv1_buf;
-//         uint32 *ext_rets = NULL, *argv_ret = argv;
-//         uint32 cell_num = 0, i;
-//         uint8 *ext_ret_types = func_type->result + 1;
-//         uint32 ext_ret_cell = wasm_get_cell_num(ext_ret_types, ext_ret_count);
-//         uint64 size;
-
-//         /* Allocate memory all arguments */
-//         size =
-//             sizeof(uint32) * (uint64)argc            /* original arguments */
-//             + sizeof(void *) * (uint64)ext_ret_count /* extra result values' addr */
-//             + sizeof(uint32) * (uint64)ext_ret_cell; /* extra result values */
-//         if (size > sizeof(argv1_buf) && !(argv1 = wasm_runtime_malloc(size)))
-//         {
-//             goto fail;
-//         }
-
-//         /* Copy original arguments */
-//         memcpy(argv1, argv, sizeof(uint32) * argc);
-
-//         /* Get the extra result value's address */
-//         ext_rets =
-//             argv1 + argc + sizeof(void *) / sizeof(uint32) * ext_ret_count;
-
-//         /* Append each extra result value's address to original arguments */
-//         for (i = 0; i < ext_ret_count; i++)
-//         {
-//             *(uintptr_t *)(argv1 + argc + sizeof(void *) / sizeof(uint32) * i) =
-//                 (uintptr_t)(ext_rets + cell_num);
-//             cell_num += wasm_value_type_cell_num(ext_ret_types[i]);
-//         }
-
-//         ret = wasm_runtime_invoke_native(exec_env, wasm_func, argv1, argv);
-//         if (!ret)
-//         {
-//             if (argv1 != argv1_buf)
-//                 wasm_runtime_free(argv1);
-//             goto fail;
-//         }
-
-//         /* Get extra result values */
-//         switch (func_type->result[0])
-//         {
-//         case VALUE_TYPE_I32:
-//         case VALUE_TYPE_F32:
-//             argv_ret++;
-//             break;
-//         case VALUE_TYPE_I64:
-//         case VALUE_TYPE_F64:
-//             argv_ret += 2;
-//             break;
-//         default:
-//             break;
-//         }
-//         ext_rets =
-//             argv1 + argc + sizeof(void *) / sizeof(uint32) * ext_ret_count;
-//         memcpy(argv_ret, ext_rets, sizeof(uint32) * cell_num);
-
-//         if (argv1 != argv1_buf)
-//             wasm_runtime_free(argv1);
-
-//         return true;
-//     }
-//     else
-//     {
-//         ret = wasm_runtime_invoke_native(exec_env, wasm_func, argv, argv);
-//         if (!ret)
-//             goto fail;
-
-//         return true;
-//     }
-
-// fail:
-//     return false;
-// }
-
-// static bool
-// call_wasm_jit_call_indirect_func(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-//                                  WASMType *func_type, LLVMValueRef table_idx,
-//                                  LLVMValueRef table_elem_idx,
-//                                  LLVMTypeRef *param_types,
-//                                  LLVMValueRef *param_values, uint32 param_count,
-//                                  uint32 param_cell_num, uint32 result_count,
-//                                  uint8 *wasm_ret_types, LLVMValueRef *value_rets,
-//                                  LLVMValueRef *p_res)
-// {
-//     LLVMTypeRef llvm_func_type, func_ptr_type, func_param_types[6];
-//     LLVMTypeRef ret_type, ret_ptr_type, elem_ptr_type;
-//     LLVMValueRef func, ret_idx, ret_ptr, elem_idx, elem_ptr;
-//     LLVMValueRef func_param_values[6], res = NULL;
-//     char buf[32];
-//     uint32 i, cell_num = 0, ret_cell_num, argv_cell_num;
-
-//     func_param_types[0] = comp_ctx->exec_env_type; /* exec_env */
-//     func_param_types[1] = I32_TYPE;                /* table_idx */
-//     func_param_types[2] = I32_TYPE;                /* table_elem_idx */
-//     func_param_types[3] = I32_TYPE;                /* argc */
-//     func_param_types[4] = INT32_PTR_TYPE;          /* argv */
-//     if (!(llvm_func_type = LLVMFunctionType(INT8_TYPE, func_param_types, 5, false)))
-//     {
-//         wasm_jit_set_last_error("llvm add function type failed.");
-//         return false;
-//     }
-
-//     /* prepare function pointer */
-
-//     if (!(func_ptr_type = LLVMPointerType(llvm_func_type, 0)))
-//     {
-//         wasm_jit_set_last_error("create LLVM function type failed.");
-//         return false;
-//     }
-
-//     /* JIT mode, call the function directly */
-//     if (!(func = I64_CONST((uint64)(uintptr_t)jit_call_indirect)) || !(func = LLVMConstIntToPtr(func, func_ptr_type)))
-//     {
-//         wasm_jit_set_last_error("create LLVM value failed.");
-//         return false;
-//     }
-
-//     ret_cell_num = wasm_get_cell_num(wasm_ret_types, result_count);
-//     argv_cell_num =
-//         param_cell_num > ret_cell_num ? param_cell_num : ret_cell_num;
-//     if (argv_cell_num > 64)
-//     {
-//         wasm_jit_set_last_error("prepare native arguments failed: "
-//                                 "maximum 64 parameter cell number supported.");
-//         return false;
-//     }
-
-//     /* prepare frame_lp */
-//     for (i = 0; i < param_count; i++)
-//     {
-//         if (!(elem_idx = I32_CONST(cell_num)) || !(elem_ptr_type = LLVMPointerType(param_types[i], 0)))
-//         {
-//             wasm_jit_set_last_error("llvm add const or pointer type failed.");
-//             return false;
-//         }
-
-//         snprintf(buf, sizeof(buf), "%s%d", "elem", i);
-//         if (!(elem_ptr =
-//                   LLVMBuildInBoundsGEP2(comp_ctx->builder, I32_TYPE,
-//                                         func_ctx->argv_buf, &elem_idx, 1, buf)) ||
-//             !(elem_ptr = LLVMBuildBitCast(comp_ctx->builder, elem_ptr,
-//                                           elem_ptr_type, buf)))
-//         {
-//             wasm_jit_set_last_error("llvm build bit cast failed.");
-//             return false;
-//         }
-
-//         if (!(res = LLVMBuildStore(comp_ctx->builder, param_values[i],
-//                                    elem_ptr)))
-//         {
-//             wasm_jit_set_last_error("llvm build store failed.");
-//             return false;
-//         }
-//         LLVMSetAlignment(res, 1);
-
-//         cell_num += wasm_value_type_cell_num(func_type->param[i]);
-//     }
-
-//     func_param_values[0] = func_ctx->exec_env;
-//     func_param_values[1] = table_idx;
-//     func_param_values[2] = table_elem_idx;
-//     func_param_values[3] = I32_CONST(param_cell_num);
-//     func_param_values[4] = func_ctx->argv_buf;
-
-//     /* call wasm_jit_call_indirect() function */
-//     if (!(res = LLVMBuildCall2(comp_ctx->builder, llvm_func_type, func,
-//                                func_param_values, 5, "res")))
-//     {
-//         wasm_jit_set_last_error("llvm build call failed.");
-//         return false;
-//     }
-
-//     /* get function result values */
-//     cell_num = 0;
-//     for (i = 0; i < result_count; i++)
-//     {
-//         ret_type = TO_LLVM_TYPE(wasm_ret_types[i]);
-//         if (!(ret_idx = I32_CONST(cell_num)) || !(ret_ptr_type = LLVMPointerType(ret_type, 0)))
-//         {
-//             wasm_jit_set_last_error("llvm add const or pointer type failed.");
-//             return false;
-//         }
-
-//         snprintf(buf, sizeof(buf), "argv_ret%d", i);
-//         if (!(ret_ptr =
-//                   LLVMBuildInBoundsGEP2(comp_ctx->builder, I32_TYPE,
-//                                         func_ctx->argv_buf, &ret_idx, 1, buf)) ||
-//             !(ret_ptr = LLVMBuildBitCast(comp_ctx->builder, ret_ptr,
-//                                          ret_ptr_type, buf)))
-//         {
-//             wasm_jit_set_last_error("llvm build GEP or bit cast failed.");
-//             return false;
-//         }
-
-//         snprintf(buf, sizeof(buf), "ret%d", i);
-//         if (!(value_rets[i] =
-//                   LLVMBuildLoad2(comp_ctx->builder, ret_type, ret_ptr, buf)))
-//         {
-//             wasm_jit_set_last_error("llvm build load failed.");
-//             return false;
-//         }
-//         cell_num += wasm_value_type_cell_num(wasm_ret_types[i]);
-//     }
-
-//     *p_res = res;
-//     return true;
-// }
 
 bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                                        uint32 type_idx, uint32 tbl_idx)
@@ -845,6 +691,7 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     LLVMBasicBlockRef check_func_idx_succ, block_return, block_curr;
     LLVMBasicBlockRef block_call_import, block_call_non_import;
     LLVMValueRef llvm_offset;
+    LLVMValueRef llvm_tables_base_addr = func_ctx->tables_base_addr;
     uint32 total_param_count, param_count, result_count;
     uint32 ext_cell_num, i, j;
     uint8 *wasm_param_types, *wasm_result_types;
@@ -852,13 +699,15 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     char buf[32];
     bool ret = false;
 
-    ftype_idx_const = I32_CONST(type_idx);
-
     wasm_type = wasm_module->types[type_idx];
     wasm_param_types = wasm_type->param;
     wasm_result_types = wasm_type->result;
     param_count = wasm_type->param_count;
     result_count = wasm_type->result_count;
+
+    type_idx = wasm_get_cur_type_idx(wasm_module->types, wasm_type);
+
+    ftype_idx_const = I32_CONST(type_idx);
 
     POP_I32(llvm_elem_idx);
 
@@ -870,7 +719,7 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     }
 
     if (!(table_size_const = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                                                   func_ctx->wasm_module, &llvm_offset,
+                                                   llvm_tables_base_addr, &llvm_offset,
                                                    1, "cur_size_i8p")))
     {
         HANDLE_FAILURE("LLVMBuildGEP");
@@ -923,12 +772,18 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     }
 
     if (!(llvm_table_elem = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                                                  func_ctx->wasm_module, &llvm_offset, 1,
+                                                  llvm_tables_base_addr, &llvm_offset, 1,
                                                   "table_elem_i8p")))
     {
         wasm_jit_set_last_error("llvm build add failed.");
         goto fail;
     }
+
+    llvm_table_elem = LLVMBuildBitCast(comp_ctx->builder, llvm_table_elem,
+                                       INT8_PPTR_TYPE, "table_data_ptr");
+
+    llvm_table_elem = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE, llvm_table_elem,
+                                     "table_data_base");
 
     if (!(llvm_table_elem = LLVMBuildBitCast(comp_ctx->builder, llvm_table_elem,
                                              INT32_PTR_TYPE, "table_elem_i32p")))

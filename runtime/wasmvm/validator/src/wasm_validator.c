@@ -805,7 +805,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
         {
             int32 idx;
             WASMType *func_type;
-
+#if WASM_ENABLE_JIT != 0
+            func->has_op_call_indirect = true;
+#endif
             validate_leb_uint32(p, p_end, type_idx);
             validate_leb_uint32(p, p_end, table_idx);
             if (!check_table_index(module, table_idx))
@@ -1108,7 +1110,9 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
         case WASM_OP_MEMORY_GROW:
             CHECK_MEMORY();
+#if WASM_ENABLE_JIT != 0
             module->has_op_memory_grow = true;
+#endif
             if (*p++ != 0x00)
             {
                 wasm_set_exception(module, "zero byte expected");

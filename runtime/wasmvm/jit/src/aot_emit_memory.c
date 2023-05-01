@@ -112,18 +112,6 @@ wasm_jit_check_memory_overflow(JITCompContext *comp_ctx, JITFuncContext *func_ct
 
     POP_I32(addr);
 
-    if (is_target_64bit)
-    {
-        if (!(offset_const = LLVMBuildZExt(comp_ctx->builder, offset_const,
-                                           I64_TYPE, "offset_i64")) ||
-            !(addr = LLVMBuildZExt(comp_ctx->builder, addr, I64_TYPE,
-                                   "addr_i64")))
-        {
-            wasm_jit_set_last_error("llvm build zero extend failed.");
-            goto fail;
-        }
-    }
-
     /* offset1 = offset + addr; */
     BUILD_OP(Add, offset_const, addr, offset1, "offset1");
 

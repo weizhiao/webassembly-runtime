@@ -15,6 +15,8 @@ bool memory_instantiate(WASMMemory *memory)
         goto fail;
     }
 
+    memset(memory->memory_data, 0, memory_data_size);
+
     memory->memory_data_size = (uint32)memory_data_size;
     memory->memory_data_end = memory->memory_data + (uint32)memory_data_size;
 

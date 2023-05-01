@@ -222,6 +222,7 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
 {
     TargetMachine *TM =
         reinterpret_cast<TargetMachine *>(comp_ctx->target_machine);
+    LLVMContext *CONTEXT = reinterpret_cast<LLVMContext *>(comp_ctx->context);
     PipelineTuningOptions PTO;
     PTO.LoopVectorization = true;
     PTO.SLPVectorization = true;
@@ -229,7 +230,7 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
 
 #ifdef DEBUG_PASS
     PassInstrumentationCallbacks PIC;
-    PassBuilder PB(TM, PTO, None, &PIC);
+    PassBuilder PB(TM, PTO, std::nullopt, &PIC);
 #else
 #if LLVM_VERSION_MAJOR == 12
     PassBuilder PB(false, TM, PTO);
@@ -257,7 +258,7 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
                      { return std::move(AA); });
 
 #ifdef DEBUG_PASS
-    StandardInstrumentations SI(true, false);
+    StandardInstrumentations SI(*CONTEXT, true, false);
     SI.registerCallbacks(PIC, &FAM);
 #endif
 

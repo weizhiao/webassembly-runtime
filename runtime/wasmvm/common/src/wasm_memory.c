@@ -230,12 +230,9 @@ void wasm_module_destory(WASMModule *module)
         if (memory_count)
         {
             memory = module->memories;
-            for (i = 0; i < memory_count; i++, memory++)
+            if (memory->memory_data)
             {
-                if (memory->memory_data)
-                {
-                    wasm_runtime_free(memory->memory_data);
-                }
+                wasm_runtime_free(memory->memory_data);
             }
         }
     case Validate:
@@ -280,12 +277,6 @@ void wasm_module_destory(WASMModule *module)
         if (module->tables)
         {
             wasm_runtime_free(module->tables);
-        }
-
-        // 清除memory
-        if (module->memories)
-        {
-            wasm_runtime_free(module->memories);
         }
 
         // 清除function

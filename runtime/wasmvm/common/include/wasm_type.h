@@ -259,7 +259,6 @@ typedef struct WASMFunction
     const char *field_name;
     const char *signature;
 
-    uint32 func_type_index;
     WASMType *func_type;
 
     void *func_ptr;
@@ -348,6 +347,16 @@ typedef struct OrcJitThreadArg
 
 typedef struct WASMModule
 {
+    // 各种类型
+    WASMMemory memories[1];
+    WASMType **types;
+    WASMFunction *functions;
+    WASMTable *tables;
+    WASMGlobal *globals;
+    WASMExport *exports;
+    WASMElement *elements;
+    WASMDataSeg *data_segments;
+    uint32 start_function;
 
     WASMModuleStage module_stage;
 
@@ -367,17 +376,6 @@ typedef struct WASMModule
     uint32 import_table_count;
     uint32 import_memory_count;
     uint32 import_global_count;
-
-    // 各种类型
-    WASMType **types;
-    WASMFunction *functions;
-    WASMTable *tables;
-    WASMMemory *memories;
-    WASMGlobal *globals;
-    WASMExport *exports;
-    WASMElement *elements;
-    WASMDataSeg *data_segments;
-    uint32 start_function;
 
     // 默认的栈大小
     uint32 default_value_stack_size;
@@ -483,6 +481,20 @@ is_value_type(uint8 type)
     )
         return true;
     return false;
+}
+
+inline static uint32
+wasm_get_cur_type_idx(WASMType **types,
+                      WASMType *cur_type)
+{
+    uint32 i;
+
+    for (i = 0;; i++)
+    {
+        if (cur_type == types[i])
+            return i;
+    }
+    return -1;
 }
 
 #endif

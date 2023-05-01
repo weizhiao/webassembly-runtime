@@ -34,19 +34,19 @@ static inline LLVMTypeRef GET_LLVM_PTRTYPE(JITCompContext *comp_ctx, uint8 value
     return ptr_type;
 }
 
-#define GET_GLOBAL_LLVMPTR(global_idx)                                                                                                   \
-    do                                                                                                                                   \
-    {                                                                                                                                    \
-        global = globals + global_idx;                                                                                                   \
-        value_type = global->type;                                                                                                       \
-        offset = global->data_offset;                                                                                                    \
-        llvm_offset = I32_CONST(offset);                                                                                                 \
-        if (!(llvm_ptr = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->global_info, &llvm_offset, 1, "global_ptr_tmp"))) \
-        {                                                                                                                                \
-            return false;                                                                                                                \
-        }                                                                                                                                \
-        llvm_ptr_type = GET_LLVM_PTRTYPE(comp_ctx, value_type);                                                                          \
-        llvm_ptr = LLVMBuildBitCast(comp_ctx->builder, llvm_ptr, llvm_ptr_type, "global_ptr");                                           \
+#define GET_GLOBAL_LLVMPTR(global_idx)                                                                                                        \
+    do                                                                                                                                        \
+    {                                                                                                                                         \
+        global = globals + global_idx;                                                                                                        \
+        value_type = global->type;                                                                                                            \
+        offset = global->data_offset;                                                                                                         \
+        llvm_offset = I32_CONST(offset);                                                                                                      \
+        if (!(llvm_ptr = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->global_base_addr, &llvm_offset, 1, "global_ptr_tmp"))) \
+        {                                                                                                                                     \
+            return false;                                                                                                                     \
+        }                                                                                                                                     \
+        llvm_ptr_type = GET_LLVM_PTRTYPE(comp_ctx, value_type);                                                                               \
+        llvm_ptr = LLVMBuildBitCast(comp_ctx->builder, llvm_ptr, llvm_ptr_type, "global_ptr");                                                \
     } while (0)
 
 #define GET_LOCAL_TYPE(local_idx)                                        \
@@ -1109,8 +1109,8 @@ bool wasm_jit_compile_wasm(WASMModule *module)
         }
     }
 
-    // /* Run IR optimization before feeding in ORCJIT and AOT codegen */
-    // if (comp_ctx->optimize)
+    /* Run IR optimization before feeding in ORCJIT and AOT codegen */
+    // if (1)
     // {
     //     /* Run passes for AOT/JIT mode.
     //        TODO: Apply these passes in the do_ir_transform callback of
@@ -1126,8 +1126,8 @@ bool wasm_jit_compile_wasm(WASMModule *module)
     // }
 
 #ifdef DUMP_MODULE
-    LLVMDumpModule(comp_ctx->module);
-    os_printf("\n");
+    // LLVMDumpModule(comp_ctx->module);
+    // os_printf("\n");
 #endif
 
     LLVMErrorRef err;

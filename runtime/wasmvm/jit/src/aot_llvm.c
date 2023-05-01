@@ -293,126 +293,99 @@ create_local_variables(JITCompContext *comp_ctx,
     return true;
 }
 
-static bool
+static void
+create_table_info(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
+{
+    LLVMValueRef llvm_offset, tables_info;
+    LLVMBuilderRef builder = comp_ctx->builder;
+    LLVMValueRef llvm_wasm_module = func_ctx->wasm_module;
+    uint32 offset;
+
+    offset = offsetof(WASMModule, tables);
+    llvm_offset = I32_CONST(offset);
+
+    tables_info = LLVMBuildInBoundsGEP2(builder, INT8_TYPE, llvm_wasm_module,
+                                        &llvm_offset, 1, "table_base_addr_offset");
+
+    tables_info = LLVMBuildBitCast(builder, tables_info, INT8_PPTR_TYPE,
+                                   "table_base_addr_ptr");
+
+    tables_info = LLVMBuildLoad2(builder, INT8_PTR_TYPE,
+                                 tables_info, "table_base_addr");
+
+    func_ctx->tables_base_addr = tables_info;
+}
+
+static void
 create_global_info(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef offset;
+    LLVMValueRef llvm_offset;
     uint32 offset_of_global_data;
     // 获取全局变量信息
     offset_of_global_data = offsetof(WASMModule, global_data);
 
-    offset = I32_CONST(offset_of_global_data);
-    if (!(func_ctx->global_info = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                                                        func_ctx->wasm_module, &offset, 1, "global_base_addr_offset")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
+    llvm_offset = I32_CONST(offset_of_global_data);
+    func_ctx->global_base_addr = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
+                                                       func_ctx->wasm_module, &llvm_offset, 1, "global_base_addr_offset");
 
-    if (!(func_ctx->global_info = LLVMBuildBitCast(comp_ctx->builder, func_ctx->global_info, INT8_PPTR_TYPE,
-                                                   "global_base_addr_ptr")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
+    func_ctx->global_base_addr = LLVMBuildBitCast(comp_ctx->builder, func_ctx->global_base_addr, INT8_PPTR_TYPE,
+                                                  "global_base_addr_ptr");
 
-    func_ctx->global_info = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE,
-                                           func_ctx->global_info, "global_base_addr");
-
-    return true;
+    func_ctx->global_base_addr = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE,
+                                                func_ctx->global_base_addr, "global_base_addr");
 }
 
-static bool
+static void
 create_memory_info(WASMModule *module, JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef offset;
+    LLVMValueRef llvm_offset, memory_inst;
     WASMFunction *func = func_ctx->wasm_func;
     LLVMTypeRef int8_pptr_type = comp_ctx->basic_types.int8_pptr_type;
-    uint32 offset_of_memory_data;
     bool mem_space_unchanged = !module->has_op_memory_grow;
 
     func_ctx->mem_space_unchanged = mem_space_unchanged;
+    memory_inst = func_ctx->wasm_module;
 
-    // 获取内存信息
-    offset_of_memory_data = offsetof(WASMModule, memories);
+    llvm_offset = I32_CONST(offsetof(WASMMemory, memory_data));
+    func_ctx->mem_info.mem_base_addr = LLVMBuildInBoundsGEP2(
+        comp_ctx->builder, INT8_TYPE, memory_inst, &llvm_offset, 1,
+        "mem_base_addr_offset");
 
-    offset = I32_CONST(offset_of_memory_data + offsetof(WASMMemory, memory_data));
-    if (!(func_ctx->mem_info.mem_base_addr = LLVMBuildInBoundsGEP2(
-              comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module, &offset, 1,
-              "mem_base_addr_offset")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
-    offset = I32_CONST(offset_of_memory_data + offsetof(WASMMemory, cur_page_count));
-    if (!(func_ctx->mem_info.mem_cur_page_count_addr =
-              LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                                    func_ctx->wasm_module, &offset, 1,
-                                    "mem_cur_page_offset")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
-    offset = I32_CONST(offset_of_memory_data + offsetof(WASMMemory, memory_data_size));
-    if (!(func_ctx->mem_info.mem_data_size_addr = LLVMBuildInBoundsGEP2(
-              comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module, &offset, 1,
-              "mem_data_size_offset")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
+    llvm_offset = I32_CONST(offsetof(WASMMemory, cur_page_count));
+    func_ctx->mem_info.mem_cur_page_count_addr =
+        LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
+                              memory_inst, &llvm_offset, 1,
+                              "mem_cur_page_offset");
+    llvm_offset = I32_CONST(offsetof(WASMMemory, memory_data_size));
+    func_ctx->mem_info.mem_data_size_addr = LLVMBuildInBoundsGEP2(
+        comp_ctx->builder, INT8_TYPE, memory_inst, &llvm_offset, 1,
+        "mem_data_size_offset");
 
-    if (!(func_ctx->mem_info.mem_base_addr = LLVMBuildBitCast(
-              comp_ctx->builder, func_ctx->mem_info.mem_base_addr,
-              int8_pptr_type, "mem_base_addr_ptr")))
-    {
-        wasm_jit_set_last_error("llvm build bit cast failed");
-        return false;
-    }
-    if (!(func_ctx->mem_info.mem_cur_page_count_addr = LLVMBuildBitCast(
-              comp_ctx->builder, func_ctx->mem_info.mem_cur_page_count_addr,
-              INT32_PTR_TYPE, "mem_cur_page_ptr")))
-    {
-        wasm_jit_set_last_error("llvm build bit cast failed");
-        return false;
-    }
-    if (!(func_ctx->mem_info.mem_data_size_addr = LLVMBuildBitCast(
-              comp_ctx->builder, func_ctx->mem_info.mem_data_size_addr,
-              INT32_PTR_TYPE, "mem_data_size_ptr")))
-    {
-        wasm_jit_set_last_error("llvm build bit cast failed");
-        return false;
-    }
+    func_ctx->mem_info.mem_base_addr = LLVMBuildBitCast(
+        comp_ctx->builder, func_ctx->mem_info.mem_base_addr,
+        int8_pptr_type, "mem_base_addr_ptr");
+    func_ctx->mem_info.mem_cur_page_count_addr = LLVMBuildBitCast(
+        comp_ctx->builder, func_ctx->mem_info.mem_cur_page_count_addr,
+        INT32_PTR_TYPE, "mem_cur_page_ptr");
+    func_ctx->mem_info.mem_data_size_addr = LLVMBuildBitCast(
+        comp_ctx->builder, func_ctx->mem_info.mem_data_size_addr,
+        INT32_PTR_TYPE, "mem_data_size_ptr");
     if (mem_space_unchanged)
     {
-        if (!(func_ctx->mem_info.mem_base_addr = LLVMBuildLoad2(
-                  comp_ctx->builder, OPQ_PTR_TYPE,
-                  func_ctx->mem_info.mem_base_addr, "mem_base_addr")))
-        {
-            wasm_jit_set_last_error("llvm build load failed");
-            return false;
-        }
-        if (!(func_ctx->mem_info.mem_cur_page_count_addr =
-                  LLVMBuildLoad2(comp_ctx->builder, I32_TYPE,
-                                 func_ctx->mem_info.mem_cur_page_count_addr,
-                                 "mem_cur_page_count")))
-        {
-            wasm_jit_set_last_error("llvm build load failed");
-            return false;
-        }
-        if (!(func_ctx->mem_info.mem_data_size_addr = LLVMBuildLoad2(
-                  comp_ctx->builder, I32_TYPE,
-                  func_ctx->mem_info.mem_data_size_addr, "mem_data_size")))
-        {
-            wasm_jit_set_last_error("llvm build load failed");
-            return false;
-        }
+        func_ctx->mem_info.mem_base_addr = LLVMBuildLoad2(
+            comp_ctx->builder, OPQ_PTR_TYPE,
+            func_ctx->mem_info.mem_base_addr, "mem_base_addr");
+        func_ctx->mem_info.mem_cur_page_count_addr =
+            LLVMBuildLoad2(comp_ctx->builder, I32_TYPE,
+                           func_ctx->mem_info.mem_cur_page_count_addr,
+                           "mem_cur_page_count");
+        func_ctx->mem_info.mem_data_size_addr = LLVMBuildLoad2(
+            comp_ctx->builder, I32_TYPE,
+            func_ctx->mem_info.mem_data_size_addr, "mem_data_size");
     }
-
-    return true;
 }
 
-static bool
+static void
 create_cur_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     LLVMValueRef offset;
@@ -421,15 +394,9 @@ create_cur_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     func_ctx->cur_exception =
         LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module,
                               &offset, 1, "cur_exception");
-    if (!func_ctx->cur_exception)
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed.");
-        return false;
-    }
-    return true;
 }
 
-static bool
+static void
 create_func_type_indexes(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     LLVMValueRef offset, func_type_indexes_ptr;
@@ -440,11 +407,7 @@ create_func_type_indexes(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
         LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module,
                               &offset, 1, "func_type_indexes_ptr");
 
-    if (!(int32_ptr_type = LLVMPointerType(INT32_PTR_TYPE, 0)))
-    {
-        wasm_jit_set_last_error("llvm get pointer type failed.");
-        return false;
-    }
+    int32_ptr_type = LLVMPointerType(INT32_PTR_TYPE, 0);
 
     func_ctx->func_type_indexes =
         LLVMBuildBitCast(comp_ctx->builder, func_type_indexes_ptr,
@@ -453,11 +416,9 @@ create_func_type_indexes(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     func_ctx->func_type_indexes =
         LLVMBuildLoad2(comp_ctx->builder, INT32_PTR_TYPE,
                        func_ctx->func_type_indexes, "func_type_indexes");
-
-    return true;
 }
 
-static bool
+static void
 create_func_ptrs(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     LLVMValueRef offset;
@@ -476,8 +437,6 @@ create_func_ptrs(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     func_ctx->func_ptrs =
         LLVMBuildBitCast(comp_ctx->builder, func_ctx->func_ptrs,
                          INT8_PPTR_TYPE, "func_ptrs");
-
-    return true;
 }
 
 // 创建函数编译环境
@@ -564,33 +523,23 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
     }
 
     /* Create base addr, end addr, data size of mem, heap */
-    if (wasm_func->has_op_memory && !create_memory_info(wasm_module, comp_ctx, func_ctx))
+    if (wasm_func->has_op_memory)
     {
-        goto fail;
+        create_memory_info(wasm_module, comp_ctx, func_ctx);
     }
 
-    if (!create_global_info(comp_ctx, func_ctx))
-    {
-        goto fail;
-    }
-
-    /* Load current exception */
-    if (!create_cur_exception(comp_ctx, func_ctx))
-    {
-        goto fail;
-    }
+    create_global_info(comp_ctx, func_ctx);
+    create_table_info(comp_ctx, func_ctx);
+    create_cur_exception(comp_ctx, func_ctx);
 
     /* Load function type indexes */
-    if (!create_func_type_indexes(comp_ctx, func_ctx))
+    if (wasm_func->has_op_call_indirect)
     {
-        goto fail;
+        create_func_type_indexes(comp_ctx, func_ctx);
     }
 
     /* Load function pointers */
-    if (!create_func_ptrs(comp_ctx, func_ctx))
-    {
-        goto fail;
-    }
+    create_func_ptrs(comp_ctx, func_ctx);
 
     return func_ctx;
 
@@ -1000,9 +949,6 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
         goto fail;
     }
 
-    /* Create LLVM module for each jit function, note:
-       different from non ORC JIT mode, no need to dispose it,
-       it will be disposed when the thread safe context is disposed */
     if (!(comp_ctx->module = LLVMModuleCreateWithNameInContext(
               "WASM Module", comp_ctx->context)))
     {
@@ -1012,26 +958,8 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
 
     comp_ctx->enable_bulk_memory = true;
 
-    if (option->enable_tail_call)
-        comp_ctx->enable_tail_call = true;
-
-    if (option->enable_ref_types)
-        comp_ctx->enable_ref_types = true;
-
-    if (option->disable_llvm_intrinsics)
-        comp_ctx->disable_llvm_intrinsics = true;
-
-    if (option->disable_llvm_lto)
-        comp_ctx->disable_llvm_lto = true;
-
-    if (option->enable_stack_estimation)
-        comp_ctx->enable_stack_estimation = true;
-
     comp_ctx->opt_level = option->opt_level;
     comp_ctx->size_level = option->size_level;
-
-    comp_ctx->custom_sections_wp = option->custom_sections;
-    comp_ctx->custom_sections_count = option->custom_sections_count;
 
     /* Create TargetMachine */
     if (!create_target_machine_detect_host(comp_ctx))

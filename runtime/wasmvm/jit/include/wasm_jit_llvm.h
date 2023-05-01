@@ -23,7 +23,6 @@
 #include "llvm-c/LLJIT.h"
 
 #include "wasm_jit_orc_extra.h"
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -33,10 +32,8 @@ extern "C"
 #define OPQ_PTR_TYPE INT8_PTR_TYPE
 
 #ifndef NDEBUG
-#undef DEBUG_PASS
-#undef DUMP_MODULE
-// #define DEBUG_PASS
-// #define DUMP_MODULE
+#define DEBUG_PASS
+#define DUMP_MODULE
 #else
 #undef DEBUG_PASS
 #undef DUMP_MODULE
@@ -151,7 +148,8 @@ extern "C"
         LLVMValueRef func_ptrs;
 
         JITMemInfo mem_info;
-        LLVMValueRef global_info;
+        LLVMValueRef global_base_addr;
+        LLVMValueRef tables_base_addr;
 
         LLVMValueRef cur_exception;
 
@@ -357,39 +355,31 @@ extern "C"
         uint32 custom_sections_count;
     } AOTCompOption, *wasm_jit_comp_option_t;
 
-    bool
-    wasm_jit_compiler_init(void);
+    bool wasm_jit_compiler_init(void);
 
-    void
-    wasm_jit_compiler_destroy(void);
+    void wasm_jit_compiler_destroy(void);
 
     JITCompContext *
     wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t option);
 
-    void
-    wasm_jit_destroy_comp_context(JITCompContext *comp_ctx);
+    void wasm_jit_destroy_comp_context(JITCompContext *comp_ctx);
 
-    int32
-    wasm_jit_get_native_symbol_index(JITCompContext *comp_ctx, const char *symbol);
+    int32 wasm_jit_get_native_symbol_index(JITCompContext *comp_ctx, const char *symbol);
 
-    bool
-    wasm_jit_compile_wasm(WASMModule *module);
+    bool wasm_jit_compile_wasm(WASMModule *module);
 
     uint8 *
     wasm_jit_emit_elf_file(JITCompContext *comp_ctx, uint32 *p_elf_file_size);
 
-    void
-    wasm_jit_destroy_elf_file(uint8 *elf_file);
+    void wasm_jit_destroy_elf_file(uint8 *elf_file);
 
-    void
-    wasm_jit_block_destroy(JITBlock *block);
+    void wasm_jit_block_destroy(JITBlock *block);
 
     LLVMTypeRef
     wasm_type_to_llvm_type(JITLLVMTypes *llvm_types, uint8 wasm_type);
 
-    bool
-    wasm_jit_build_zero_function_ret(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                     WASMType *func_type);
+    bool wasm_jit_build_zero_function_ret(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
+                                          WASMType *func_type);
 
     LLVMValueRef
     wasm_jit_call_llvm_intrinsic(const JITCompContext *comp_ctx,
@@ -407,20 +397,15 @@ extern "C"
     wasm_jit_get_func_from_table(const JITCompContext *comp_ctx, LLVMValueRef base,
                                  LLVMTypeRef func_type, int32 index);
 
-    bool
-    wasm_jit_check_simd_compatibility(const char *arch_c_str, const char *cpu_c_str);
+    bool wasm_jit_check_simd_compatibility(const char *arch_c_str, const char *cpu_c_str);
 
-    void
-    wasm_jit_add_expand_memory_op_pass(LLVMPassManagerRef pass);
+    void wasm_jit_add_expand_memory_op_pass(LLVMPassManagerRef pass);
 
-    void
-    wasm_jit_add_simple_loop_unswitch_pass(LLVMPassManagerRef pass);
+    void wasm_jit_add_simple_loop_unswitch_pass(LLVMPassManagerRef pass);
 
-    void
-    wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRef module);
+    void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRef module);
 
-    void
-    wasm_jit_handle_llvm_errmsg(const char *string, LLVMErrorRef err);
+    void wasm_jit_handle_llvm_errmsg(const char *string, LLVMErrorRef err);
 
 #ifdef __cplusplus
 } /* end of extern "C" */

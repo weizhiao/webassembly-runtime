@@ -2,7 +2,7 @@
 #define _CONFIG_H
 
 #define EXCEPTION_BUF_LEN 128
-#define APP_THREAD_STACK_SIZE_DEFAULT (32 * 1024)
+#define APP_THREAD_STACK_SIZE_DEFAULT (16 * 1024)
 
 #ifndef WASM_ORC_JIT_COMPILE_THREAD_NUM
 /* The number of compilation threads created by LLVM JIT */
@@ -39,5 +39,7 @@
 #ifndef WASM_ENABLE_BULK_MEMORY
 #define WASM_ENABLE_BULK_MEMORY 1
 #endif
+
+#define NDEBUG
 
 #endif

@@ -171,7 +171,7 @@ bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, uint32 func_idx, uint32 *
         case VALUE_TYPE_FUNCREF:
         {
             arg_i32 = *argv_src++;
-            if (signature[i + 1] == '*')
+            if (signature && signature[i + 1] == '*')
             {
                 arg_i64 = (uint64)wasm_runtime_addr_app_to_native(module, arg_i32);
             }

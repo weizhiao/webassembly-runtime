@@ -1,12 +1,12 @@
 #include "wasm_jit_emit_table.h"
 #include "wasm_jit_emit_exception.h"
 
-uint64
+inline uint64
 get_tbl_inst_offset(uint32 tbl_idx)
 {
     uint64 offset = 0;
 
-    offset = offsetof(WASMModule, tables) + tbl_idx * sizeof(WASMTable);
+    offset = tbl_idx * sizeof(WASMTable);
 
     return offset;
 }
