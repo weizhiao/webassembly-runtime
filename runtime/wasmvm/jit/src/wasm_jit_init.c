@@ -28,7 +28,6 @@ init_func_type_indexes(WASMModule *module)
 
 bool init_llvm_jit_functions_stage1(WASMModule *module)
 {
-    AOTCompOption option = {0};
     uint64 size;
     uint32 i;
 
@@ -58,14 +57,7 @@ bool init_llvm_jit_functions_stage1(WASMModule *module)
         module->func_ptrs_compiled[i] = true;
     }
 
-    option.is_jit_mode = true;
-
-    option.opt_level = 3;
-    option.size_level = 3;
-
-    option.enable_bulk_memory = true;
-
-    module->comp_ctx = wasm_jit_create_comp_context(module, &option);
+    module->comp_ctx = wasm_jit_create_comp_context(module);
     if (!module->comp_ctx)
     {
         return false;

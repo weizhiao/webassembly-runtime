@@ -248,6 +248,13 @@ extern "C"
         LLVMValueRef i32x2_zero;
     } JITLLVMConsts;
 
+    typedef struct JITFuncType
+    {
+        LLVMTypeRef *llvm_param_types;
+        LLVMTypeRef *llvm_result_types;
+        LLVMTypeRef llvm_func_type;
+    } JITFuncType;
+
     /**
      * Compiler context
      */
@@ -320,47 +327,17 @@ extern "C"
 
         /* Function contexts */
         /* TODO: */
-        JITFuncContext **func_ctxes;
+        JITFuncContext **jit_func_ctxes;
+        JITFuncType *jit_func_types;
         uint32 func_ctx_count;
-        char **custom_sections_wp;
-        uint32 custom_sections_count;
-
     } JITCompContext;
-
-    typedef struct AOTCompOption
-    {
-        bool is_jit_mode;
-        bool is_indirect_mode;
-        char *target_arch;
-        char *target_abi;
-        char *target_cpu;
-        char *cpu_features;
-        bool is_sgx_platform;
-        bool enable_bulk_memory;
-        bool enable_thread_mgr;
-        bool enable_tail_call;
-        bool enable_simd;
-        bool enable_ref_types;
-        bool enable_aux_stack_check;
-        bool enable_aux_stack_frame;
-        bool disable_llvm_intrinsics;
-        bool disable_llvm_lto;
-        bool enable_stack_estimation;
-        uint32 opt_level;
-        uint32 size_level;
-        uint32 output_format;
-        uint32 bounds_checks;
-        uint32 stack_bounds_checks;
-        char **custom_sections;
-        uint32 custom_sections_count;
-    } AOTCompOption, *wasm_jit_comp_option_t;
 
     bool wasm_jit_compiler_init(void);
 
     void wasm_jit_compiler_destroy(void);
 
     JITCompContext *
-    wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t option);
+    wasm_jit_create_comp_context(WASMModule *wasm_module);
 
     void wasm_jit_destroy_comp_context(JITCompContext *comp_ctx);
 

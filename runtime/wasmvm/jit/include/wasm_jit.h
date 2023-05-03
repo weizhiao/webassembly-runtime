@@ -2,6 +2,7 @@
 #define WASM_JIT_H
 
 #include "platform.h"
+#include "wasm_llvm_opcode.h"
 #include "wasm_type.h"
 #include "wasm_memory.h"
 #include "runtime_log.h"

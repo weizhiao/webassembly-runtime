@@ -82,7 +82,7 @@ static inline LLVMTypeRef GET_LLVM_PTRTYPE(JITCompContext *comp_ctx, uint8 value
 static bool
 wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 func_index)
 {
-    JITFuncContext *func_ctx = comp_ctx->func_ctxes[func_index];
+    JITFuncContext *func_ctx = comp_ctx->jit_func_ctxes[func_index];
     WASMFunction *wasm_func = func_ctx->wasm_func;
     WASMGlobal *global;
     WASMGlobal *globals = wasm_module->globals;
@@ -1034,68 +1034,6 @@ fail:
     return false;
 }
 
-/* Check whether the target supports hardware atomic instructions */
-static bool
-wasm_jit_require_lower_atomic_pass(JITCompContext *comp_ctx)
-{
-    bool ret = false;
-    if (!strncmp(comp_ctx->target_arch, "riscv", 5))
-    {
-        char *feature =
-            LLVMGetTargetMachineFeatureString(comp_ctx->target_machine);
-
-        if (feature)
-        {
-            if (!strstr(feature, "+a"))
-            {
-                ret = true;
-            }
-            LLVMDisposeMessage(feature);
-        }
-    }
-    return ret;
-}
-
-/* Check whether the target needs to expand switch to if/else */
-static bool
-wasm_jit_require_lower_switch_pass(JITCompContext *comp_ctx)
-{
-    bool ret = false;
-
-    /* IR switch/case will cause .rodata relocation on riscv/xtensa */
-    if (!strncmp(comp_ctx->target_arch, "riscv", 5) || !strncmp(comp_ctx->target_arch, "xtensa", 6))
-    {
-        ret = true;
-    }
-
-    return ret;
-}
-
-static bool
-apply_passes_for_indirect_mode(JITCompContext *comp_ctx)
-{
-    LLVMPassManagerRef common_pass_mgr;
-
-    if (!(common_pass_mgr = LLVMCreatePassManager()))
-    {
-        wasm_jit_set_last_error("create pass manager failed");
-        return false;
-    }
-
-    wasm_jit_add_expand_memory_op_pass(common_pass_mgr);
-
-    if (wasm_jit_require_lower_atomic_pass(comp_ctx))
-        LLVMAddLowerAtomicPass(common_pass_mgr);
-
-    if (wasm_jit_require_lower_switch_pass(comp_ctx))
-        LLVMAddLowerSwitchPass(common_pass_mgr);
-
-    LLVMRunPassManager(common_pass_mgr, comp_ctx->module);
-
-    LLVMDisposePassManager(common_pass_mgr);
-    return true;
-}
-
 bool wasm_jit_compile_wasm(WASMModule *module)
 {
     uint32 i;
@@ -1124,11 +1062,6 @@ bool wasm_jit_compile_wasm(WASMModule *module)
     //        optimization may create some intrinsic function calls like
     //        llvm.memset, so let's remove these function calls here. */
     // }
-
-#ifdef DUMP_MODULE
-    // LLVMDumpModule(comp_ctx->module);
-    // os_printf("\n");
-#endif
 
     LLVMErrorRef err;
     LLVMOrcJITDylibRef orc_main_dylib;
@@ -1164,38 +1097,6 @@ bool wasm_jit_compile_wasm(WASMModule *module)
     return true;
 }
 
-#if !(defined(_WIN32) || defined(_WIN32_))
-char *
-wasm_jit_generate_tempfile_name(const char *prefix, const char *extension,
-                                char *buffer, uint32 len)
-{
-    int fd, name_len;
-
-    name_len = snprintf(buffer, len, "%s-XXXXXX", prefix);
-
-    if ((fd = mkstemp(buffer)) <= 0)
-    {
-        wasm_jit_set_last_error("make temp file failed.");
-        return NULL;
-    }
-
-    /* close and remove temp file */
-    close(fd);
-    unlink(buffer);
-
-    /* Check if buffer length is enough */
-    /* name_len + '.' + extension + '\0' */
-    if (name_len + 1 + strlen(extension) + 1 > len)
-    {
-        wasm_jit_set_last_error("temp file name too long.");
-        return NULL;
-    }
-
-    snprintf(buffer + name_len, len - name_len, ".%s", extension);
-    return buffer;
-}
-#endif /* end of !(defined(_WIN32) || defined(_WIN32_)) */
-
 bool wasm_jit_emit_llvm_file(JITCompContext *comp_ctx, const char *file_name)
 {
     char *err = NULL;
@@ -1208,32 +1109,6 @@ bool wasm_jit_emit_llvm_file(JITCompContext *comp_ctx, const char *file_name)
             err = NULL;
         }
         wasm_jit_set_last_error("emit llvm ir to file failed.");
-        return false;
-    }
-
-    return true;
-}
-
-bool wasm_jit_emit_object_file(JITCompContext *comp_ctx, char *file_name)
-{
-    char *err = NULL;
-    LLVMCodeGenFileType file_type = LLVMObjectFile;
-    LLVMTargetRef target = LLVMGetTargetMachineTarget(comp_ctx->target_machine);
-
-    if (!strncmp(LLVMGetTargetName(target), "arc", 3))
-        /* Emit to assmelby file instead for arc target
-           as it cannot emit to object file */
-        file_type = LLVMAssemblyFile;
-
-    if (LLVMTargetMachineEmitToFile(comp_ctx->target_machine, comp_ctx->module,
-                                    file_name, file_type, &err) != 0)
-    {
-        if (err)
-        {
-            LLVMDisposeMessage(err);
-            err = NULL;
-        }
-        wasm_jit_set_last_error("emit elf to object file failed.");
         return false;
     }
 

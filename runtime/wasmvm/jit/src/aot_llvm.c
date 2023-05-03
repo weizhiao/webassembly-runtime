@@ -34,11 +34,11 @@ wasm_type_to_llvm_type(JITLLVMTypes *llvm_types, uint8 wasm_type)
  */
 static LLVMValueRef
 wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
-                       WASMType *func_type, uint32 func_index,
+                       uint32 type_index, uint32 func_index,
                        LLVMTypeRef *p_func_type)
 {
     LLVMValueRef func = NULL;
-    LLVMTypeRef *param_types, ret_type, llvm_func_type;
+    LLVMTypeRef ret_type, llvm_func_type;
     LLVMValueRef local_value;
     LLVMTypeRef func_type_wrapper;
     LLVMValueRef func_wrapper;
@@ -48,48 +48,7 @@ wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
     uint32 i, j = 0, param_count;
     uint32 backend_thread_num, compile_thread_num;
 
-    /* exec env as first parameter */
-    param_count = func_type->param_count + 1;
-
-    if (func_type->result_count > 1)
-        param_count += func_type->result_count - 1;
-
-    /* Initialize parameter types of the LLVM function */
-    size = sizeof(LLVMTypeRef) * ((uint64)param_count);
-    if (size >= UINT32_MAX || !(param_types = wasm_runtime_malloc((uint32)size)))
-    {
-        wasm_jit_set_last_error("allocate memory failed.");
-        return NULL;
-    }
-
-    /* exec env as first parameter */
-    param_types[j++] = comp_ctx->exec_env_type;
-    for (i = 0; i < func_type->param_count; i++)
-        param_types[j++] = TO_LLVM_TYPE(func_type->param[i]);
-    /* Extra results' address */
-    for (i = 1; i < func_type->result_count; i++, j++)
-    {
-        param_types[j] = TO_LLVM_TYPE(func_type->result[j]);
-        if (!(param_types[j] = LLVMPointerType(param_types[j], 0)))
-        {
-            wasm_jit_set_last_error("llvm get pointer type failed.");
-            goto fail;
-        }
-    }
-
-    /* Resolve return type of the LLVM function */
-    if (func_type->result_count)
-        ret_type = TO_LLVM_TYPE(func_type->result[0]);
-    else
-        ret_type = VOID_TYPE;
-
-    /* Resolve function prototype */
-    if (!(llvm_func_type =
-              LLVMFunctionType(ret_type, param_types, param_count, false)))
-    {
-        wasm_jit_set_last_error("create LLVM function type failed.");
-        goto fail;
-    }
+    llvm_func_type = comp_ctx->jit_func_types[type_index].llvm_func_type;
 
     /* Add LLVM function */
     snprintf(func_name, sizeof(func_name), "%s%d", WASM_JIT_FUNC_PREFIX, func_index);
@@ -102,13 +61,6 @@ wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
     j = 0;
     local_value = LLVMGetParam(func, j++);
     LLVMSetValueName(local_value, "exec_env");
-
-    /* Set parameter names */
-    for (i = 0; i < func_type->param_count; i++)
-    {
-        local_value = LLVMGetParam(func, j++);
-        LLVMSetValueName(local_value, "");
-    }
 
     if (p_func_type)
         *p_func_type = llvm_func_type;
@@ -154,7 +106,6 @@ wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
     }
 
 fail:
-    wasm_runtime_free(param_types);
     return func;
 }
 
@@ -196,15 +147,11 @@ static bool
 create_argv_buf(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     LLVMValueRef argv_buf_offset = I32_THREE, argv_buf_addr;
+    LLVMBuilderRef builder = comp_ctx->builder;
 
     /* Get argv buffer address */
-    if (!(argv_buf_addr = LLVMBuildInBoundsGEP2(
-              comp_ctx->builder, OPQ_PTR_TYPE, func_ctx->exec_env,
-              &argv_buf_offset, 1, "argv_buf_addr")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        return false;
-    }
+    LLVMBuildGEP(argv_buf_addr, OPQ_PTR_TYPE, func_ctx->exec_env,
+                 argv_buf_offset, "argv_buf_addr");
 
     /* Convert to int32 pointer type */
     if (!(func_ctx->argv_buf = LLVMBuildBitCast(comp_ctx->builder, argv_buf_addr,
@@ -296,7 +243,7 @@ create_local_variables(JITCompContext *comp_ctx,
 static void
 create_table_info(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef llvm_offset, tables_info;
+    LLVMValueRef llvm_offset, tables_base_addr;
     LLVMBuilderRef builder = comp_ctx->builder;
     LLVMValueRef llvm_wasm_module = func_ctx->wasm_module;
     uint32 offset;
@@ -304,41 +251,45 @@ create_table_info(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     offset = offsetof(WASMModule, tables);
     llvm_offset = I32_CONST(offset);
 
-    tables_info = LLVMBuildInBoundsGEP2(builder, INT8_TYPE, llvm_wasm_module,
-                                        &llvm_offset, 1, "table_base_addr_offset");
+    LLVMBuildGEP(tables_base_addr, INT8_TYPE, llvm_wasm_module,
+                 llvm_offset, "table_base_addr_offset");
 
-    tables_info = LLVMBuildBitCast(builder, tables_info, INT8_PPTR_TYPE,
-                                   "table_base_addr_ptr");
+    tables_base_addr = LLVMBuildBitCast(builder, tables_base_addr, INT8_PPTR_TYPE,
+                                        "table_base_addr_ptr");
 
-    tables_info = LLVMBuildLoad2(builder, INT8_PTR_TYPE,
-                                 tables_info, "table_base_addr");
+    tables_base_addr = LLVMBuildLoad2(builder, INT8_PTR_TYPE,
+                                      tables_base_addr, "table_base_addr");
 
-    func_ctx->tables_base_addr = tables_info;
+    func_ctx->tables_base_addr = tables_base_addr;
 }
 
 static void
 create_global_info(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef llvm_offset;
-    uint32 offset_of_global_data;
+    LLVMValueRef llvm_offset, global_base_addr;
+    LLVMBuilderRef builder = comp_ctx->builder;
+    uint32 offset;
     // 获取全局变量信息
-    offset_of_global_data = offsetof(WASMModule, global_data);
+    offset = offsetof(WASMModule, global_data);
 
-    llvm_offset = I32_CONST(offset_of_global_data);
-    func_ctx->global_base_addr = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                                                       func_ctx->wasm_module, &llvm_offset, 1, "global_base_addr_offset");
+    llvm_offset = I32_CONST(offset);
+    LLVMBuildGEP(global_base_addr, INT8_TYPE,
+                 func_ctx->wasm_module, llvm_offset, "global_base_addr_offset");
 
-    func_ctx->global_base_addr = LLVMBuildBitCast(comp_ctx->builder, func_ctx->global_base_addr, INT8_PPTR_TYPE,
-                                                  "global_base_addr_ptr");
+    global_base_addr = LLVMBuildBitCast(comp_ctx->builder, global_base_addr, INT8_PPTR_TYPE,
+                                        "global_base_addr_ptr");
 
-    func_ctx->global_base_addr = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE,
-                                                func_ctx->global_base_addr, "global_base_addr");
+    global_base_addr = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE,
+                                      global_base_addr, "global_base_addr");
+
+    func_ctx->global_base_addr = global_base_addr;
 }
 
 static void
 create_memory_info(WASMModule *module, JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
     LLVMValueRef llvm_offset, memory_inst;
+    LLVMBuilderRef builder = comp_ctx->builder;
     WASMFunction *func = func_ctx->wasm_func;
     LLVMTypeRef int8_pptr_type = comp_ctx->basic_types.int8_pptr_type;
     bool mem_space_unchanged = !module->has_op_memory_grow;
@@ -347,19 +298,17 @@ create_memory_info(WASMModule *module, JITCompContext *comp_ctx, JITFuncContext 
     memory_inst = func_ctx->wasm_module;
 
     llvm_offset = I32_CONST(offsetof(WASMMemory, memory_data));
-    func_ctx->mem_info.mem_base_addr = LLVMBuildInBoundsGEP2(
-        comp_ctx->builder, INT8_TYPE, memory_inst, &llvm_offset, 1,
+    LLVMBuildGEP(
+        func_ctx->mem_info.mem_base_addr, INT8_TYPE, memory_inst, llvm_offset,
         "mem_base_addr_offset");
 
     llvm_offset = I32_CONST(offsetof(WASMMemory, cur_page_count));
-    func_ctx->mem_info.mem_cur_page_count_addr =
-        LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
-                              memory_inst, &llvm_offset, 1,
-                              "mem_cur_page_offset");
+    LLVMBuildGEP(func_ctx->mem_info.mem_cur_page_count_addr, INT8_TYPE,
+                 memory_inst, llvm_offset, "mem_cur_page_offset");
+
     llvm_offset = I32_CONST(offsetof(WASMMemory, memory_data_size));
-    func_ctx->mem_info.mem_data_size_addr = LLVMBuildInBoundsGEP2(
-        comp_ctx->builder, INT8_TYPE, memory_inst, &llvm_offset, 1,
-        "mem_data_size_offset");
+    LLVMBuildGEP(func_ctx->mem_info.mem_data_size_addr, INT8_TYPE,
+                 memory_inst, llvm_offset, "mem_data_size_offset");
 
     func_ctx->mem_info.mem_base_addr = LLVMBuildBitCast(
         comp_ctx->builder, func_ctx->mem_info.mem_base_addr,
@@ -388,24 +337,25 @@ create_memory_info(WASMModule *module, JITCompContext *comp_ctx, JITFuncContext 
 static void
 create_cur_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef offset;
+    LLVMValueRef llvm_offset;
+    LLVMBuilderRef builder = comp_ctx->builder;
+    llvm_offset = I32_CONST(offsetof(WASMModule, cur_exception));
 
-    offset = I32_CONST(offsetof(WASMModule, cur_exception));
-    func_ctx->cur_exception =
-        LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module,
-                              &offset, 1, "cur_exception");
+    LLVMBuildGEP(func_ctx->cur_exception, INT8_TYPE,
+                 func_ctx->wasm_module, llvm_offset, "cur_exception");
 }
 
 static void
 create_func_type_indexes(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef offset, func_type_indexes_ptr;
+    LLVMValueRef llvm_offset, func_type_indexes_ptr;
+    LLVMBuilderRef builder = comp_ctx->builder;
     LLVMTypeRef int32_ptr_type;
 
-    offset = I32_CONST(offsetof(WASMModule, func_type_indexes));
-    func_type_indexes_ptr =
-        LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module,
-                              &offset, 1, "func_type_indexes_ptr");
+    llvm_offset = I32_CONST(offsetof(WASMModule, func_type_indexes));
+
+    LLVMBuildGEP(func_type_indexes_ptr, INT8_TYPE,
+                 func_ctx->wasm_module, llvm_offset, "func_type_indexes_ptr");
 
     int32_ptr_type = LLVMPointerType(INT32_PTR_TYPE, 0);
 
@@ -421,12 +371,12 @@ create_func_type_indexes(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 static void
 create_func_ptrs(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
-    LLVMValueRef offset;
+    LLVMValueRef llvm_offset;
+    LLVMBuilderRef builder = comp_ctx->builder;
 
-    offset = I32_CONST(offsetof(WASMModule, func_ptrs));
-    func_ctx->func_ptrs =
-        LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE, func_ctx->wasm_module,
-                              &offset, 1, "func_ptrs_offset");
+    llvm_offset = I32_CONST(offsetof(WASMModule, func_ptrs));
+    LLVMBuildGEP(func_ctx->func_ptrs, INT8_TYPE,
+                 func_ctx->wasm_module, llvm_offset, "func_ptrs_offset");
     func_ctx->func_ptrs =
         LLVMBuildBitCast(comp_ctx->builder, func_ctx->func_ptrs,
                          INT8_PPTR_TYPE, "func_ptrs_tmp");
@@ -446,6 +396,8 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
 {
     JITFuncContext *func_ctx;
     WASMType *func_type = wasm_func->func_type;
+    uint32 type_index = wasm_func->type_index;
+    LLVMBuilderRef builder = comp_ctx->builder;
     JITBlock *wasm_jit_block;
     LLVMValueRef wasm_module_offset = I32_TWO, wasm_module_addr;
     uint64 size;
@@ -478,7 +430,7 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
     }
 
     if (!(func_ctx->func =
-              wasm_jit_add_llvm_func(comp_ctx, func_ctx->module, func_type,
+              wasm_jit_add_llvm_func(comp_ctx, func_ctx->module, type_index,
                                      func_index, &func_ctx->llvm_func_type)))
     {
         goto fail;
@@ -495,13 +447,8 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
 
     func_ctx->exec_env = LLVMGetParam(func_ctx->func, 0);
 
-    if (!(wasm_module_addr = LLVMBuildInBoundsGEP2(
-              comp_ctx->builder, OPQ_PTR_TYPE, func_ctx->exec_env,
-              &wasm_module_offset, 1, "wasm_module_addr")))
-    {
-        wasm_jit_set_last_error("llvm build in bounds gep failed");
-        goto fail;
-    }
+    LLVMBuildGEP(wasm_module_addr, OPQ_PTR_TYPE, func_ctx->exec_env,
+                 wasm_module_offset, "wasm_module_addr");
 
     if (!(func_ctx->wasm_module = LLVMBuildLoad2(comp_ctx->builder, OPQ_PTR_TYPE,
                                                  wasm_module_addr, "wasm_module")))
@@ -602,7 +549,7 @@ wasm_jit_create_func_contexts(WASMModule *wasm_module, JITCompContext *comp_ctx)
 }
 
 static bool
-wasm_jit_set_llvm_basic_types(JITLLVMTypes *basic_types, LLVMContextRef context)
+set_llvm_basic_types(JITLLVMTypes *basic_types, LLVMContextRef context)
 {
     basic_types->int1_type = LLVMInt1TypeInContext(context);
     basic_types->int8_type = LLVMInt8TypeInContext(context);
@@ -652,7 +599,95 @@ wasm_jit_set_llvm_basic_types(JITLLVMTypes *basic_types, LLVMContextRef context)
 }
 
 static bool
-wasm_jit_create_llvm_consts(JITLLVMConsts *consts, JITCompContext *comp_ctx)
+create_llvm_func_types(WASMModule *wasm_module, JITCompContext *comp_ctx)
+{
+    LLVMTypeRef *llvm_param_types, *llvm_result_types, llvm_ret_type, llvm_func_type;
+    uint32 type_count = wasm_module->type_count;
+    uint32 total_size = type_count * sizeof(JITFuncType);
+    WASMType *wasm_type;
+    WASMType **wasm_types = wasm_module->types;
+    uint8 *wasm_param_types, *wasm_result_types;
+    uint32 total_param_count;
+    uint32 param_count, result_count;
+    JITFuncType *func_type;
+    uint32 i, j, k;
+
+    if (!(comp_ctx->jit_func_types = wasm_runtime_malloc(total_size)))
+    {
+        return false;
+    }
+
+    func_type = comp_ctx->jit_func_types;
+
+    for (i = 0; i < type_count; i++, func_type++)
+    {
+        wasm_type = wasm_types[i];
+        param_count = wasm_type->param_count;
+        result_count = wasm_type->result_count;
+        wasm_param_types = wasm_type->param;
+        wasm_result_types = wasm_type->result;
+
+        total_param_count = 1 + param_count;
+
+        if (result_count > 1)
+            total_param_count += result_count - 1;
+
+        total_size = sizeof(LLVMTypeRef) * (uint64)total_param_count;
+        if (!(llvm_param_types = wasm_runtime_malloc((uint32)total_size)))
+        {
+            return false;
+        }
+
+        if (result_count)
+        {
+            total_size = sizeof(LLVMTypeRef) * result_count;
+        }
+        else
+        {
+            total_size = sizeof(LLVMTypeRef);
+        }
+        if (!(llvm_result_types = wasm_runtime_malloc((uint32)total_size)))
+        {
+            return false;
+        }
+        /* Prepare param types */
+        j = 0;
+        llvm_param_types[j++] = INT8_PPTR_TYPE;
+        for (k = 0; k < param_count; k++)
+            llvm_param_types[j++] = TO_LLVM_TYPE(wasm_param_types[k]);
+
+        if (result_count)
+        {
+            llvm_ret_type = TO_LLVM_TYPE(wasm_result_types[0]);
+        }
+        else
+        {
+            llvm_ret_type = VOID_TYPE;
+        }
+
+        llvm_result_types[0] = llvm_ret_type;
+        for (k = 1; k < result_count; k++, j++)
+        {
+            llvm_param_types[j] = TO_LLVM_TYPE(wasm_result_types[k]);
+            llvm_result_types[k] = llvm_param_types[j];
+            if (!(llvm_param_types[j] = LLVMPointerType(llvm_param_types[j], 0)))
+            {
+                return false;
+            }
+        }
+
+        llvm_func_type =
+            LLVMFunctionType(llvm_ret_type, llvm_param_types, total_param_count, false);
+
+        func_type->llvm_param_types = llvm_param_types;
+        func_type->llvm_func_type = llvm_func_type;
+        func_type->llvm_result_types = llvm_result_types;
+    }
+    return true;
+}
+
+static bool
+create_llvm_consts(JITLLVMConsts *consts, JITCompContext *comp_ctx)
 {
 #define CREATE_I1_CONST(name, value)                                       \
     if (!(consts->i1_##name =                                              \
@@ -904,7 +939,7 @@ void wasm_jit_compiler_destroy(void)
 }
 
 JITCompContext *
-wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t option)
+wasm_jit_create_comp_context(WASMModule *wasm_module)
 {
     JITCompContext *comp_ctx, *ret = NULL;
     char *fp_round = "round.tonearest",
@@ -933,9 +968,6 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
         goto fail;
     }
 
-    /* Get a reference to the underlying LLVMContext, note:
-         different from non LAZY JIT mode, no need to dispose this context,
-         if will be disposed when the thread safe context is disposed */
     if (!(comp_ctx->context = LLVMOrcThreadSafeContextGetContext(
               comp_ctx->orc_thread_safe_context)))
     {
@@ -958,8 +990,8 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
 
     comp_ctx->enable_bulk_memory = true;
 
-    comp_ctx->opt_level = option->opt_level;
-    comp_ctx->size_level = option->size_level;
+    comp_ctx->opt_level = 3;
+    comp_ctx->size_level = 3;
 
     /* Create TargetMachine */
     if (!create_target_machine_detect_host(comp_ctx))
@@ -988,31 +1020,6 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
 #endif
 #endif
 
-    if (option->enable_simd)
-    {
-        char *tmp;
-        bool check_simd_ret;
-
-        comp_ctx->enable_simd = true;
-
-        if (!(tmp = LLVMGetTargetMachineCPU(comp_ctx->target_machine)))
-        {
-            wasm_jit_set_last_error("get CPU from Target Machine fail");
-            goto fail;
-        }
-
-        check_simd_ret =
-            wasm_jit_check_simd_compatibility(comp_ctx->target_arch, tmp);
-        LLVMDisposeMessage(tmp);
-        if (!check_simd_ret)
-        {
-            wasm_jit_set_last_error("SIMD compatibility check failed, "
-                                    "try adding --cpu=<cpu> to specify a cpu "
-                                    "or adding --disable-simd to disable SIMD");
-            goto fail;
-        }
-    }
-
     if (!(target_data_ref =
               LLVMCreateTargetDataLayout(comp_ctx->target_machine)))
     {
@@ -1034,15 +1041,20 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
         goto fail;
     }
 
-    if (!wasm_jit_set_llvm_basic_types(&comp_ctx->basic_types, comp_ctx->context))
+    if (!set_llvm_basic_types(&comp_ctx->basic_types, comp_ctx->context))
     {
         wasm_jit_set_last_error("create LLVM basic types failed.");
         goto fail;
     }
 
-    if (!wasm_jit_create_llvm_consts(&comp_ctx->llvm_consts, comp_ctx))
+    if (!create_llvm_consts(&comp_ctx->llvm_consts, comp_ctx))
     {
         wasm_jit_set_last_error("create LLVM const values failed.");
+        goto fail;
+    }
+
+    if (!create_llvm_func_types(wasm_module, comp_ctx))
+    {
         goto fail;
     }
 
@@ -1054,7 +1066,7 @@ wasm_jit_create_comp_context(WASMModule *wasm_module, wasm_jit_comp_option_t opt
 
     /* Create function context for each function */
     comp_ctx->func_ctx_count = wasm_module->function_count - wasm_module->import_function_count;
-    if (comp_ctx->func_ctx_count > 0 && !(comp_ctx->func_ctxes =
+    if (comp_ctx->func_ctx_count > 0 && !(comp_ctx->jit_func_ctxes =
                                               wasm_jit_create_func_contexts(wasm_module, comp_ctx)))
         goto fail;
 
@@ -1090,8 +1102,8 @@ void wasm_jit_destroy_comp_context(JITCompContext *comp_ctx)
     if (comp_ctx->orc_jit)
         LLVMOrcDisposeLLLazyJIT(comp_ctx->orc_jit);
 
-    if (comp_ctx->func_ctxes)
-        wasm_jit_destroy_func_contexts(comp_ctx->func_ctxes,
+    if (comp_ctx->jit_func_ctxes)
+        wasm_jit_destroy_func_contexts(comp_ctx->jit_func_ctxes,
                                        comp_ctx->func_ctx_count);
 
     if (comp_ctx->target_cpu)
@@ -1268,6 +1280,7 @@ wasm_jit_get_func_from_table(const JITCompContext *comp_ctx, LLVMValueRef base,
                              LLVMTypeRef func_type, int32 index)
 {
     LLVMValueRef func;
+    LLVMBuilderRef builder = comp_ctx->builder;
     LLVMValueRef func_addr;
 
     if (!(func_addr = I32_CONST(index)))
@@ -1276,13 +1289,8 @@ wasm_jit_get_func_from_table(const JITCompContext *comp_ctx, LLVMValueRef base,
         goto fail;
     }
 
-    if (!(func_addr =
-              LLVMBuildInBoundsGEP2(comp_ctx->builder, OPQ_PTR_TYPE, base,
-                                    &func_addr, 1, "func_addr")))
-    {
-        wasm_jit_set_last_error("get function addr by index failed.");
-        goto fail;
-    }
+    LLVMBuildGEP(func_addr, OPQ_PTR_TYPE, base,
+                 func_addr, "func_addr");
 
     func =
         LLVMBuildLoad2(comp_ctx->builder, OPQ_PTR_TYPE, func_addr, "func_tmp");

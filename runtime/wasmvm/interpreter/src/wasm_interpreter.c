@@ -2799,8 +2799,11 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
     switch (function->func_kind)
     {
     case Wasm_Func:
-        // wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
+#if WASM_ENABLE_JIT == 0
+        wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
+#else
         llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
+#endif
         break;
     case Native_Func:
         uint32 func_idx = (uint32)(function - module_inst->functions);

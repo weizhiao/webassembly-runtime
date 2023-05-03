@@ -284,10 +284,4 @@ bool wasm_jit_emit_llvm_file(JITCompContext *comp_ctx, const char *file_name);
 bool wasm_jit_emit_wasm_jit_file(JITCompContext *comp_ctx, WASMModule *wasm_module,
                                  const char *file_name);
 
-bool wasm_jit_emit_object_file(JITCompContext *comp_ctx, char *file_name);
-
-char *
-wasm_jit_generate_tempfile_name(const char *prefix, const char *extension,
-                                char *buffer, uint32 len);
-
 #endif /* end of _wasm_jit_COMPILER_H_ */

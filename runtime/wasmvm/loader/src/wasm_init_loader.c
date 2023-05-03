@@ -13,14 +13,6 @@ bool init_load(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
         read_leb_uint7(p, p_end, id);
         read_leb_uint32(p, p_end, payload_len);
         // 目前不支持custom段
-        if (id == SECTION_TYPE_USER)
-        {
-            read_leb_uint32(p, p_end, name_len);
-            if (name_len)
-            {
-                p += name_len;
-            }
-        }
 
         section_end = p + payload_len;
 

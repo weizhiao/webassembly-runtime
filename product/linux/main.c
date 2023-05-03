@@ -265,13 +265,9 @@ int main(int argc, char *argv[])
         goto fail;
     }
 
-    if (is_repl_mode)
+    if (!execute_main(module, argc, argv))
     {
-        app_instance_repl(module);
-    }
-    else
-    {
-        execute_main(module, argc, argv);
+        goto fail;
     }
 
     wasm_module_destory(module);
@@ -284,5 +280,5 @@ fail:
 create_module_fail:
     wasm_runtime_free(file_buf);
 read_file_fail:
-    return 0;
+    return -1;
 }

@@ -260,6 +260,7 @@ typedef struct WASMFunction
     const char *signature;
 
     WASMType *func_type;
+    uint32 type_index;
 
     void *func_ptr;
     FuncKind func_kind;

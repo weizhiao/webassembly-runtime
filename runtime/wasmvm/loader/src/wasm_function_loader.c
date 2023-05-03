@@ -25,6 +25,7 @@ bool load_function_section(const uint8 *buf, const uint8 *buf_end, WASMModule *m
             type = module->types[type_index];
 
             /* 设置函数的类型 */
+            func->type_index = type_index;
             func->func_type = type;
             func->param_types = type->param;
             func->result_types = type->result;
