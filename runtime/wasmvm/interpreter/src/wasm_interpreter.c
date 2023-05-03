@@ -696,22 +696,14 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
 {
     WASMModule *module = exec_env->module_inst;
     WASMFunction *func_import = module->functions + func_idx;
-    WASMFuncFrame *frame;
     uint32 argv_ret[2];
     bool ret = false;
-
-    if (!(frame = ALLOC_FRAME(exec_env, prev_frame)))
-        return;
-
-    frame->lp = prev_frame->sp - func_import->param_cell_num;
-    frame->function = func_import;
-    frame->ip = NULL;
 
     switch (func_import->func_kind)
     {
     case Native_Func:
         ret = wasm_runtime_invoke_native(
-            exec_env, func_idx, frame->lp, argv_ret);
+            exec_env, func_idx, prev_frame->sp, prev_frame->sp);
         break;
     case External_Func:
         break;
@@ -724,17 +716,12 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
 
     if (func_import->ret_cell_num == 1)
     {
-        prev_frame->sp[0] = argv_ret[0];
         prev_frame->sp++;
     }
     else if (func_import->ret_cell_num == 2)
     {
-        prev_frame->sp[0] = argv_ret[0];
-        prev_frame->sp[1] = argv_ret[1];
         prev_frame->sp += 2;
     }
-
-    FREE_FRAME(exec_env, frame);
 }
 
 #if WASM_ENABLE_LABELS_AS_VALUES != 0
@@ -2453,13 +2440,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                     offset = (uint64)(uint32)POP_I32();
                     addr = (uint32)POP_I32();
 
-#ifndef OS_ENABLE_HW_BOUND_CHECK
                     CHECK_BULK_MEMORY_OVERFLOW(addr, bytes, maddr);
-#else
-            if ((uint64)(uint32)addr + bytes > (uint64)linear_mem_size)
-                goto out_of_bounds;
-            maddr = memory->memory_data + (uint32)addr;
-#endif
 
                     seg_len = (uint64)module->data_segments[segment].data_length;
                     data = module->data_segments[segment].data;
@@ -2489,18 +2470,8 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                     src = POP_I32();
                     dst = POP_I32();
 
-#ifndef OS_ENABLE_HW_BOUND_CHECK
                     CHECK_BULK_MEMORY_OVERFLOW(src, len, msrc);
                     CHECK_BULK_MEMORY_OVERFLOW(dst, len, mdst);
-#else
-            if ((uint64)(uint32)src + len > (uint64)linear_mem_size)
-                goto out_of_bounds;
-            msrc = memory->memory_data + (uint32)src;
-
-            if ((uint64)(uint32)dst + len > (uint64)linear_mem_size)
-                goto out_of_bounds;
-            mdst = memory->memory_data + (uint32)dst;
-#endif
 
                     /* allowing the destination and source to overlap */
                     memmove(mdst, msrc, len);
@@ -2515,24 +2486,17 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                     len = POP_I32();
                     fill_val = POP_I32();
                     dst = POP_I32();
-
-#ifndef OS_ENABLE_HW_BOUND_CHECK
                     CHECK_BULK_MEMORY_OVERFLOW(dst, len, mdst);
-#else
-            if ((uint64)(uint32)dst + len > (uint64)linear_mem_size)
-                goto out_of_bounds;
-            mdst = memory->memory_data + (uint32)dst;
-#endif
 
                     memset(mdst, fill_val, len);
                     break;
                 }
-                }
 
 #if WASM_ENABLE_LABELS_AS_VALUES == 0
-            default:
-                wasm_set_exception(module, "unsupported opcode");
-                goto got_exception;
+                default:
+                    wasm_set_exception(module, "unsupported opcode");
+                    goto got_exception;
+                }
             }
 #endif
 
@@ -2579,7 +2543,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
 #if WASM_ENABLE_LABELS_AS_VALUES == 0
             continue;
 #else
-        FETCH_OPCODE_AND_DISPATCH();
+            FETCH_OPCODE_AND_DISPATCH();
 #endif
 
         call_func_from_interp:
@@ -2668,7 +2632,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
 #if WASM_ENABLE_LABELS_AS_VALUES == 0
         }
 #else
-        FETCH_OPCODE_AND_DISPATCH();
+            FETCH_OPCODE_AND_DISPATCH();
 #endif
     }
 }
@@ -2802,7 +2766,7 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
 #if WASM_ENABLE_JIT == 0
         wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
 #else
-        llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
+            llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
 #endif
         break;
     case Native_Func:
