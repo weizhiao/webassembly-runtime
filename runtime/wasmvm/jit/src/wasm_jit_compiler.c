@@ -700,8 +700,9 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_I32_WRAP_I64:
-            if (!wasm_jit_compile_op_i32_wrap_i64(comp_ctx, func_ctx))
-                return false;
+            POP_I64(llvm_value);
+            LLVMOPTrunc(llvm_value, I32_TYPE);
+            PUSH_I32(llvm_value);
             break;
 
         case WASM_OP_I32_TRUNC_S_F32:
@@ -721,10 +722,14 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_I64_EXTEND_S_I32:
+            POP_I32(llvm_value);
+            LLVMOPSExt(llvm_value, I64_TYPE);
+            PUSH_I64(llvm_value);
+            break;
         case WASM_OP_I64_EXTEND_U_I32:
-            sign = (opcode == WASM_OP_I64_EXTEND_S_I32) ? true : false;
-            if (!wasm_jit_compile_op_i64_extend_i32(comp_ctx, func_ctx, sign))
-                return false;
+            POP_I32(llvm_value);
+            LLVMOPZExt(llvm_value, I64_TYPE);
+            PUSH_I64(llvm_value);
             break;
 
         case WASM_OP_I64_TRUNC_S_F32:
@@ -782,48 +787,62 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_I32_REINTERPRET_F32:
-            if (!wasm_jit_compile_op_i32_reinterpret_f32(comp_ctx, func_ctx))
-                return false;
+            POP_F32(llvm_value);
+            LLVMOPBitCast(llvm_value, I32_TYPE);
+            PUSH_I32(llvm_value);
             break;
 
         case WASM_OP_I64_REINTERPRET_F64:
-            if (!wasm_jit_compile_op_i64_reinterpret_f64(comp_ctx, func_ctx))
-                return false;
+            POP_F64(llvm_value);
+            LLVMOPBitCast(llvm_value, I64_TYPE);
+            PUSH_I64(llvm_value);
             break;
 
         case WASM_OP_F32_REINTERPRET_I32:
-            if (!wasm_jit_compile_op_f32_reinterpret_i32(comp_ctx, func_ctx))
-                return false;
+            POP_I32(llvm_value);
+            LLVMOPBitCast(llvm_value, F32_TYPE);
+            PUSH_F32(llvm_value);
             break;
 
         case WASM_OP_F64_REINTERPRET_I64:
-            if (!wasm_jit_compile_op_f64_reinterpret_i64(comp_ctx, func_ctx))
-                return false;
+            POP_I64(llvm_value);
+            LLVMOPBitCast(llvm_value, F64_TYPE);
+            PUSH_F64(llvm_value);
             break;
 
         case WASM_OP_I32_EXTEND8_S:
-            if (!wasm_jit_compile_op_i32_extend_i32(comp_ctx, func_ctx, 8))
-                return false;
+            POP_I32(llvm_value);
+            LLVMOPSIntCast(llvm_value, INT8_TYPE);
+            LLVMOPSExt(llvm_value, I32_TYPE);
+            PUSH_I32(llvm_value);
             break;
 
         case WASM_OP_I32_EXTEND16_S:
-            if (!wasm_jit_compile_op_i32_extend_i32(comp_ctx, func_ctx, 16))
-                return false;
+            POP_I32(llvm_value);
+            LLVMOPSIntCast(llvm_value, INT16_TYPE);
+            LLVMOPSExt(llvm_value, I32_TYPE);
+            PUSH_I32(llvm_value);
             break;
 
         case WASM_OP_I64_EXTEND8_S:
-            if (!wasm_jit_compile_op_i64_extend_i64(comp_ctx, func_ctx, 8))
-                return false;
+            POP_I64(llvm_value);
+            LLVMOPSIntCast(llvm_value, INT8_TYPE);
+            LLVMOPSExt(llvm_value, I64_TYPE);
+            PUSH_I64(llvm_value);
             break;
 
         case WASM_OP_I64_EXTEND16_S:
-            if (!wasm_jit_compile_op_i64_extend_i64(comp_ctx, func_ctx, 16))
-                return false;
+            POP_I64(llvm_value);
+            LLVMOPSIntCast(llvm_value, INT16_TYPE);
+            LLVMOPSExt(llvm_value, I64_TYPE);
+            PUSH_I64(llvm_value);
             break;
 
         case WASM_OP_I64_EXTEND32_S:
-            if (!wasm_jit_compile_op_i64_extend_i64(comp_ctx, func_ctx, 32))
-                return false;
+            POP_I64(llvm_value);
+            LLVMOPSIntCast(llvm_value, I32_TYPE);
+            LLVMOPSExt(llvm_value, I64_TYPE);
+            PUSH_I64(llvm_value);
             break;
 
         case WASM_OP_MISC_PREFIX:

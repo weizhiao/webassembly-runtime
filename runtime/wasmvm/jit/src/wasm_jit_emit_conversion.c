@@ -2,19 +2,6 @@
 #include "wasm_jit_emit_exception.h"
 #include "wasm_jit_emit_numberic.h"
 
-static LLVMValueRef
-call_fcmp_intrinsic(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                    enum FloatCond cond, LLVMRealPredicate op,
-                    LLVMValueRef lhs, LLVMValueRef rhs, LLVMTypeRef src_type,
-                    const char *name)
-{
-    LLVMValueRef res = NULL;
-
-    res = LLVMBuildFCmp(comp_ctx->builder, op, lhs, rhs, name);
-
-    return res;
-}
-
 static bool
 trunc_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                    LLVMValueRef operand, LLVMTypeRef src_type,
@@ -24,14 +11,7 @@ trunc_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMBasicBlockRef check_nan_succ, check_overflow_succ;
     LLVMValueRef is_less, is_greater, res;
 
-    res = call_fcmp_intrinsic(comp_ctx, func_ctx, FLOAT_UNO, LLVMRealUNO,
-                              operand, operand, src_type, "fcmp_is_nan");
-
-    if (!res)
-    {
-        wasm_jit_set_last_error("llvm build fcmp failed.");
-        goto fail;
-    }
+    LLVMOPFCmp(res, LLVMRealUNO, operand, operand, "fcmp_is_nan");
 
     if (!(check_nan_succ = LLVMAppendBasicBlockInContext(
               comp_ctx->context, func_ctx->func, "check_nan_succ")))
@@ -48,32 +28,9 @@ trunc_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                                   check_nan_succ)))
         goto fail;
 
-    is_less =
-        call_fcmp_intrinsic(comp_ctx, func_ctx, FLOAT_LE, LLVMRealOLE, operand,
-                            min_value, src_type, "fcmp_min_value");
-
-    if (!is_less)
-    {
-        wasm_jit_set_last_error("llvm build fcmp failed.");
-        goto fail;
-    }
-
-    is_greater =
-        call_fcmp_intrinsic(comp_ctx, func_ctx, FLOAT_GE, LLVMRealOGE, operand,
-                            max_value, src_type, "fcmp_min_value");
-
-    if (!is_greater)
-    {
-        wasm_jit_set_last_error("llvm build fcmp failed.");
-        goto fail;
-    }
-
-    if (!(res = LLVMBuildOr(comp_ctx->builder, is_less, is_greater,
-                            "is_overflow")))
-    {
-        wasm_jit_set_last_error("llvm build logic and failed.");
-        goto fail;
-    }
+    LLVMOPFCmp(is_less, LLVMRealOLE, operand, min_value, "fcmp_min_value");
+    LLVMOPFCmp(is_greater, LLVMRealOGE, operand, max_value, "fcmp_max_value");
+    LLVMOPOr(res, is_less, is_greater, "is_overflow");
 
     /* Check if float value out of range */
     if (!(check_overflow_succ = LLVMAppendBasicBlockInContext(
@@ -91,20 +48,11 @@ trunc_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
 
     if (sign)
-        res = LLVMBuildFPToSI(comp_ctx->builder, operand, dest_type, name);
+        LLVMOPFPToSI(operand, dest_type, name);
     else
-        res = LLVMBuildFPToUI(comp_ctx->builder, operand, dest_type, name);
+        LLVMOPFPToUI(operand, dest_type, name);
 
-    if (!res)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    if (dest_type == I32_TYPE)
-        PUSH_I32(res);
-    else if (dest_type == I64_TYPE)
-        PUSH_I64(res);
+    PUSH(operand);
     return true;
 fail:
     return false;
@@ -135,13 +83,7 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMValueRef zero = (dest_type == I32_TYPE) ? I32_ZERO : I64_ZERO;
     LLVMValueRef vmin, vmax;
 
-    if (!(res =
-              call_fcmp_intrinsic(comp_ctx, func_ctx, FLOAT_UNO, LLVMRealUNO,
-                                  operand, operand, src_type, "fcmp_is_nan")))
-    {
-        wasm_jit_set_last_error("llvm build fcmp failed.");
-        goto fail;
-    }
+    LLVMOPFCmp(res, LLVMRealUNO, operand, operand, "fcmp_is_nan");
 
     ADD_BASIC_BLOCK(check_nan_succ, "check_nan_succ");
     ADD_BASIC_BLOCK(is_nan_block, "is_nan_block");
@@ -168,13 +110,7 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
 
     /* Start to translate check_nan_succ block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, check_nan_succ);
-    if (!(is_less = call_fcmp_intrinsic(comp_ctx, func_ctx, FLOAT_LE,
-                                        LLVMRealOLE, operand, min_value,
-                                        src_type, "fcmp_min_value")))
-    {
-        wasm_jit_set_last_error("llvm build fcmp failed.");
-        goto fail;
-    }
+    LLVMOPFCmp(is_less, LLVMRealOLE, operand, min_value, "fcmp_min_value");
     if (!LLVMBuildCondBr(comp_ctx->builder, is_less, is_less_block,
                          check_less_succ))
     {
@@ -192,13 +128,7 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
 
     /* Start to translate check_less_succ block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, check_less_succ);
-    if (!(is_greater = call_fcmp_intrinsic(comp_ctx, func_ctx, FLOAT_GE,
-                                           LLVMRealOGE, operand, max_value,
-                                           src_type, "fcmp_max_value")))
-    {
-        wasm_jit_set_last_error("llvm build fcmp failed.");
-        goto fail;
-    }
+    LLVMOPFCmp(is_greater, LLVMRealOGE, operand, max_value, "fcmp_max_value");
     if (!LLVMBuildCondBr(comp_ctx->builder, is_greater, is_greater_block,
                          check_greater_succ))
     {
@@ -227,21 +157,10 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
              sign ? 's' : 'u');
 
     if (sign)
-    {
-        res = LLVMBuildFPToSI(comp_ctx->builder, operand, dest_type,
-                              name);
-    }
+        LLVMOPFPToSI(operand, dest_type, name);
     else
-    {
-        res = LLVMBuildFPToUI(comp_ctx->builder, operand, dest_type,
-                              name);
-    }
+        LLVMOPFPToUI(operand, dest_type, name);
 
-    if (!res)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
     if (!LLVMBuildBr(comp_ctx->builder, res_block))
     {
         wasm_jit_set_last_error("llvm build br failed.");
@@ -288,32 +207,12 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMAddIncoming(phi, &zero, &is_nan_block, 1);
     LLVMAddIncoming(phi, &vmin, &is_less_block, 1);
     LLVMAddIncoming(phi, &vmax, &is_greater_block, 1);
-    LLVMAddIncoming(phi, &res, &check_greater_succ, 1);
+    LLVMAddIncoming(phi, &operand, &check_greater_succ, 1);
 
-    if (dest_type == I32_TYPE)
-        PUSH_I32(phi);
-    else if (dest_type == I64_TYPE)
-        PUSH_I64(phi);
+    PUSH(phi);
     return true;
 fail:
     return false;
-}
-
-bool wasm_jit_compile_op_i32_wrap_i64(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
-{
-    LLVMValueRef value, res;
-
-    POP_I64(value);
-
-    if (!(res = LLVMBuildTrunc(comp_ctx->builder, value, I32_TYPE,
-                               "i32_wrap_i64")))
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    PUSH_I32(res);
-    return true;
 }
 
 bool wasm_jit_compile_op_i32_trunc_f32(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
@@ -382,108 +281,6 @@ bool wasm_jit_compile_op_i32_trunc_f64(JITCompContext *comp_ctx, JITFuncContext 
             sign ? "i32_trunc_sat_f64_s" : "i32_trunc_sat_f64_u", sign);
 fail:
     return false;
-}
-
-bool wasm_jit_compile_op_i64_extend_i32(JITCompContext *comp_ctx,
-                                        JITFuncContext *func_ctx, bool sign)
-{
-    LLVMValueRef value, res;
-
-    POP_I32(value);
-
-    if (sign)
-        res = LLVMBuildSExt(comp_ctx->builder, value, I64_TYPE,
-                            "i64_extend_i32_s");
-    else
-        res = LLVMBuildZExt(comp_ctx->builder, value, I64_TYPE,
-                            "i64_extend_i32_u");
-    if (!res)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    PUSH_I64(res);
-    return true;
-}
-
-bool wasm_jit_compile_op_i64_extend_i64(JITCompContext *comp_ctx,
-                                        JITFuncContext *func_ctx, int8 bitwidth)
-{
-    LLVMValueRef value, res, cast_value = NULL;
-
-    POP_I64(value);
-
-    if (bitwidth == 8)
-    {
-        cast_value = LLVMBuildIntCast2(comp_ctx->builder, value, INT8_TYPE,
-                                       true, "i8_intcast_i64");
-    }
-    else if (bitwidth == 16)
-    {
-        cast_value = LLVMBuildIntCast2(comp_ctx->builder, value, INT16_TYPE,
-                                       true, "i16_intcast_i64");
-    }
-    else if (bitwidth == 32)
-    {
-        cast_value = LLVMBuildIntCast2(comp_ctx->builder, value, I32_TYPE, true,
-                                       "i32_intcast_i64");
-    }
-
-    if (!cast_value)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    res = LLVMBuildSExt(comp_ctx->builder, cast_value, I64_TYPE,
-                        "i64_extend_i64_s");
-
-    if (!res)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    PUSH_I64(res);
-    return true;
-}
-
-bool wasm_jit_compile_op_i32_extend_i32(JITCompContext *comp_ctx,
-                                        JITFuncContext *func_ctx, int8 bitwidth)
-{
-    LLVMValueRef value, res, cast_value = NULL;
-
-    POP_I32(value);
-
-    if (bitwidth == 8)
-    {
-        cast_value = LLVMBuildIntCast2(comp_ctx->builder, value, INT8_TYPE,
-                                       true, "i8_intcast_i32");
-    }
-    else if (bitwidth == 16)
-    {
-        cast_value = LLVMBuildIntCast2(comp_ctx->builder, value, INT16_TYPE,
-                                       true, "i16_intcast_i32");
-    }
-
-    if (!cast_value)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    res = LLVMBuildSExt(comp_ctx->builder, cast_value, I32_TYPE,
-                        "i32_extend_i32_s");
-
-    if (!res)
-    {
-        wasm_jit_set_last_error("llvm build conversion failed.");
-        return false;
-    }
-
-    PUSH_I32(res);
-    return true;
 }
 
 bool wasm_jit_compile_op_i64_trunc_f32(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
@@ -687,64 +484,4 @@ bool wasm_jit_compile_op_f64_promote_f32(JITCompContext *comp_ctx,
     /* Avoid the promote being optimized away */
     PUSH_F64(F64_CONST(1.0));
     return wasm_jit_compile_op_f64_arithmetic(comp_ctx, func_ctx, FLOAT_MUL);
-}
-
-bool wasm_jit_compile_op_i64_reinterpret_f64(JITCompContext *comp_ctx,
-                                             JITFuncContext *func_ctx)
-{
-    LLVMValueRef value;
-    POP_F64(value);
-    if (!(value =
-              LLVMBuildBitCast(comp_ctx->builder, value, I64_TYPE, "i64")))
-    {
-        wasm_jit_set_last_error("llvm build fp to si failed.");
-        return false;
-    }
-    PUSH_I64(value);
-    return true;
-}
-
-bool wasm_jit_compile_op_i32_reinterpret_f32(JITCompContext *comp_ctx,
-                                             JITFuncContext *func_ctx)
-{
-    LLVMValueRef value;
-    POP_F32(value);
-    if (!(value =
-              LLVMBuildBitCast(comp_ctx->builder, value, I32_TYPE, "i32")))
-    {
-        wasm_jit_set_last_error("llvm build fp to si failed.");
-        return false;
-    }
-    PUSH_I32(value);
-    return true;
-}
-
-bool wasm_jit_compile_op_f64_reinterpret_i64(JITCompContext *comp_ctx,
-                                             JITFuncContext *func_ctx)
-{
-    LLVMValueRef value;
-    POP_I64(value);
-    if (!(value =
-              LLVMBuildBitCast(comp_ctx->builder, value, F64_TYPE, "f64")))
-    {
-        wasm_jit_set_last_error("llvm build si to fp failed.");
-        return false;
-    }
-    PUSH_F64(value);
-    return true;
-}
-
-bool wasm_jit_compile_op_f32_reinterpret_i32(JITCompContext *comp_ctx,
-                                             JITFuncContext *func_ctx)
-{
-    LLVMValueRef value;
-    POP_I32(value);
-    if (!(value =
-              LLVMBuildBitCast(comp_ctx->builder, value, F32_TYPE, "f32")))
-    {
-        wasm_jit_set_last_error("llvm build si to fp failed.");
-        return false;
-    }
-    PUSH_F32(value);
-    return true;
 }

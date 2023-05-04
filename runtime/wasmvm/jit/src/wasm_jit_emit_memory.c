@@ -114,19 +114,19 @@ bool wasm_jit_compile_op_i32_load(JITCompContext *comp_ctx, JITFuncContext *func
     switch (bytes)
     {
     case 4:
-        LLVMOPCast(maddr, INT32_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT32_PTR_TYPE);
         LLVMOPLoad(value, maddr, I32_TYPE);
         break;
     case 2:
     case 1:
         if (bytes == 2)
         {
-            LLVMOPCast(maddr, INT16_PTR_TYPE);
+            LLVMOPBitCast(maddr, INT16_PTR_TYPE);
             data_type = INT16_TYPE;
         }
         else
         {
-            LLVMOPCast(maddr, INT8_PTR_TYPE);
+            LLVMOPBitCast(maddr, INT8_PTR_TYPE);
             data_type = INT8_TYPE;
         }
         {
@@ -161,7 +161,7 @@ bool wasm_jit_compile_op_i64_load(JITCompContext *comp_ctx, JITFuncContext *func
     switch (bytes)
     {
     case 8:
-        LLVMOPCast(maddr, INT64_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT64_PTR_TYPE);
         LLVMOPLoad(value, maddr, I64_TYPE);
         break;
     case 4:
@@ -169,17 +169,17 @@ bool wasm_jit_compile_op_i64_load(JITCompContext *comp_ctx, JITFuncContext *func
     case 1:
         if (bytes == 4)
         {
-            LLVMOPCast(maddr, INT32_PTR_TYPE);
+            LLVMOPBitCast(maddr, INT32_PTR_TYPE);
             data_type = I32_TYPE;
         }
         else if (bytes == 2)
         {
-            LLVMOPCast(maddr, INT16_PTR_TYPE);
+            LLVMOPBitCast(maddr, INT16_PTR_TYPE);
             data_type = INT16_TYPE;
         }
         else
         {
-            LLVMOPCast(maddr, INT8_PTR_TYPE);
+            LLVMOPBitCast(maddr, INT8_PTR_TYPE);
             data_type = INT8_TYPE;
         }
         {
@@ -209,7 +209,7 @@ bool wasm_jit_compile_op_f32_load(JITCompContext *comp_ctx, JITFuncContext *func
     if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 4)))
         return false;
 
-    LLVMOPCast(maddr, F32_PTR_TYPE);
+    LLVMOPBitCast(maddr, F32_PTR_TYPE);
     LLVMOPLoad(value, maddr, F32_TYPE);
     PUSH_F32(value);
     return true;
@@ -225,7 +225,7 @@ bool wasm_jit_compile_op_f64_load(JITCompContext *comp_ctx, JITFuncContext *func
     if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8)))
         return false;
 
-    LLVMOPCast(maddr, F64_PTR_TYPE);
+    LLVMOPBitCast(maddr, F64_PTR_TYPE);
     LLVMOPLoad(value, maddr, F64_TYPE);
     PUSH_F64(value);
     return true;
@@ -246,14 +246,14 @@ bool wasm_jit_compile_op_i32_store(JITCompContext *comp_ctx, JITFuncContext *fun
     switch (bytes)
     {
     case 4:
-        LLVMOPCast(maddr, INT32_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT32_PTR_TYPE);
         break;
     case 2:
-        LLVMOPCast(maddr, INT16_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT16_PTR_TYPE);
         LLVMOPTrunc(value, INT16_TYPE);
         break;
     case 1:
-        LLVMOPCast(maddr, INT8_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT8_PTR_TYPE);
         LLVMOPTrunc(value, INT8_TYPE);
         break;
     default:;
@@ -279,18 +279,18 @@ bool wasm_jit_compile_op_i64_store(JITCompContext *comp_ctx, JITFuncContext *fun
     switch (bytes)
     {
     case 8:
-        LLVMOPCast(maddr, INT64_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT64_PTR_TYPE);
         break;
     case 4:
-        LLVMOPCast(maddr, INT32_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT32_PTR_TYPE);
         LLVMOPTrunc(value, I32_TYPE);
         break;
     case 2:
-        LLVMOPCast(maddr, INT16_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT16_PTR_TYPE);
         LLVMOPTrunc(value, INT16_TYPE);
         break;
     case 1:
-        LLVMOPCast(maddr, INT8_PTR_TYPE);
+        LLVMOPBitCast(maddr, INT8_PTR_TYPE);
         LLVMOPTrunc(value, INT8_TYPE);
         break;
     default:;
@@ -312,7 +312,7 @@ bool wasm_jit_compile_op_f32_store(JITCompContext *comp_ctx, JITFuncContext *fun
     if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 4)))
         return false;
 
-    LLVMOPCast(maddr, F32_PTR_TYPE);
+    LLVMOPBitCast(maddr, F32_PTR_TYPE);
     LLVMOPStore(res, value, maddr);
     return true;
 fail:
@@ -329,7 +329,7 @@ bool wasm_jit_compile_op_f64_store(JITCompContext *comp_ctx, JITFuncContext *fun
     if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8)))
         return false;
 
-    LLVMOPCast(maddr, F64_PTR_TYPE);
+    LLVMOPBitCast(maddr, F64_PTR_TYPE);
     LLVMOPStore(res, value, maddr);
     return true;
 fail:
