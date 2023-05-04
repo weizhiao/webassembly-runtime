@@ -145,6 +145,4 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     }
 
     return true;
-fail:
-    return false;
 }

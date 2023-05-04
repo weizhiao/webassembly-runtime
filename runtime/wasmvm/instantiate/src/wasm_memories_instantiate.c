@@ -2,10 +2,9 @@
 
 bool memory_instantiate(WASMMemory *memory)
 {
-    uint32 num_bytes_per_page, init_page_count, max_page_count;
+    uint32 num_bytes_per_page, init_page_count;
     uint64 memory_data_size;
 
-    max_page_count = memory->max_page_count;
     num_bytes_per_page = memory->num_bytes_per_page;
     init_page_count = memory->cur_page_count;
 
@@ -52,10 +51,8 @@ bool memories_instantiate(WASMModule *module)
     {
         memory = memories + data_seg->memory_index;
         uint8 *memory_data = NULL;
-        uint32 memory_size = 0;
 
         memory_data = memory->memory_data;
-        memory_size = memory->num_bytes_per_page * memory->cur_page_count;
 
         if (data_seg->base_offset.init_expr_type == INIT_EXPR_TYPE_GET_GLOBAL)
         {

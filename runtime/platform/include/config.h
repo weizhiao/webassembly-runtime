@@ -36,10 +36,6 @@
 #define WASM_ENABLE_JIT 1
 #endif
 
-#ifndef WASM_ENABLE_BULK_MEMORY
-#define WASM_ENABLE_BULK_MEMORY 1
-#endif
-
 #define NDEBUG
 
 #endif

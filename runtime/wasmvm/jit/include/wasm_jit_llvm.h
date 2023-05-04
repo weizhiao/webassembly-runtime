@@ -181,21 +181,7 @@ extern "C"
         LLVMTypeRef float32_ptr_type;
         LLVMTypeRef float64_ptr_type;
 
-        LLVMTypeRef v128_type;
-        LLVMTypeRef v128_ptr_type;
-        LLVMTypeRef i8x16_vec_type;
-        LLVMTypeRef i16x8_vec_type;
-        LLVMTypeRef i32x4_vec_type;
-        LLVMTypeRef i64x2_vec_type;
-        LLVMTypeRef f32x4_vec_type;
-        LLVMTypeRef f64x2_vec_type;
-
-        LLVMTypeRef i1x2_vec_type;
-
         LLVMTypeRef meta_data_type;
-
-        LLVMTypeRef funcref_type;
-        LLVMTypeRef externref_type;
     } JITLLVMTypes;
 
     typedef struct JITLLVMConsts
@@ -210,18 +196,6 @@ extern "C"
         LLVMValueRef i32_one;
         LLVMValueRef i32_two;
         LLVMValueRef i32_three;
-        LLVMValueRef i32_four;
-        LLVMValueRef i32_five;
-        LLVMValueRef i32_six;
-        LLVMValueRef i32_seven;
-        LLVMValueRef i32_eight;
-        LLVMValueRef i32_nine;
-        LLVMValueRef i32_ten;
-        LLVMValueRef i32_eleven;
-        LLVMValueRef i32_twelve;
-        LLVMValueRef i32_thirteen;
-        LLVMValueRef i32_fourteen;
-        LLVMValueRef i32_fifteen;
         LLVMValueRef i32_neg_one;
         LLVMValueRef i64_neg_one;
         LLVMValueRef i32_min;
@@ -230,22 +204,6 @@ extern "C"
         LLVMValueRef i32_32;
         LLVMValueRef i64_63;
         LLVMValueRef i64_64;
-        LLVMValueRef i8x16_vec_zero;
-        LLVMValueRef i16x8_vec_zero;
-        LLVMValueRef i32x4_vec_zero;
-        LLVMValueRef i64x2_vec_zero;
-        LLVMValueRef f32x4_vec_zero;
-        LLVMValueRef f64x2_vec_zero;
-        LLVMValueRef i8x16_undef;
-        LLVMValueRef i16x8_undef;
-        LLVMValueRef i32x4_undef;
-        LLVMValueRef i64x2_undef;
-        LLVMValueRef f32x4_undef;
-        LLVMValueRef f64x2_undef;
-        LLVMValueRef i32x16_zero;
-        LLVMValueRef i32x8_zero;
-        LLVMValueRef i32x4_zero;
-        LLVMValueRef i32x2_zero;
     } JITLLVMConsts;
 
     typedef struct JITFuncType
@@ -267,10 +225,6 @@ extern "C"
         LLVMTargetMachineRef target_machine;
         char *target_cpu;
         char target_arch[16];
-        unsigned pointer_size;
-
-        /* Hardware intrinsic compability flags */
-        uint64 flags[8];
 
         /* required by JIT */
         LLVMOrcLLLazyJITRef orc_jit;
@@ -278,35 +232,8 @@ extern "C"
 
         LLVMModuleRef module;
 
-        /* AOT indirect mode flag & symbol list */
-        // bh_list native_symbols;
-
-        /* Bulk memory feature */
-        bool enable_bulk_memory;
-
-        /* Bounday Check */
-        bool enable_bound_check;
-
-        /* Native stack usage estimation */
-        bool enable_stack_estimation;
-
-        /* 128-bit SIMD */
-        bool enable_simd;
-
-        /* Tail Call */
-        bool enable_tail_call;
-
-        /* Reference Types */
-        bool enable_ref_types;
-
-        /* Disable LLVM built-in intrinsics */
-        bool disable_llvm_intrinsics;
-
         /* Disable LLVM link time optimization */
         bool disable_llvm_lto;
-
-        /* Whether optimize the JITed code */
-        bool optimize;
 
         uint32 opt_level;
         uint32 size_level;
@@ -322,11 +249,7 @@ extern "C"
         LLVMTypeRef exec_env_type;
         LLVMTypeRef wasm_module_type;
 
-        /* LLVM const values */
         JITLLVMConsts llvm_consts;
-
-        /* Function contexts */
-        /* TODO: */
         JITFuncContext **jit_func_ctxes;
         JITFuncType *jit_func_types;
         uint32 func_ctx_count;
@@ -369,12 +292,6 @@ extern "C"
                                    const JITFuncContext *func_ctx, const char *intrinsic,
                                    LLVMTypeRef ret_type, LLVMTypeRef *param_types,
                                    int param_count, va_list param_value_list);
-
-    LLVMValueRef
-    wasm_jit_get_func_from_table(const JITCompContext *comp_ctx, LLVMValueRef base,
-                                 LLVMTypeRef func_type, int32 index);
-
-    bool wasm_jit_check_simd_compatibility(const char *arch_c_str, const char *cpu_c_str);
 
     void wasm_jit_add_expand_memory_op_pass(LLVMPassManagerRef pass);
 

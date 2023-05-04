@@ -1,7 +1,6 @@
 #include "wasm_jit_emit_function.h"
 #include "wasm_jit_emit_exception.h"
 #include "wasm_jit_emit_control.h"
-#include "wasm_jit_emit_table.h"
 #include "wasm_exec_env.h"
 #include "wasm_exception.h"
 #include "wasm_native.h"
@@ -16,6 +15,16 @@
             goto fail;                                                      \
         }                                                                   \
     } while (0)
+
+static inline uint64
+get_tbl_inst_offset(uint32 tbl_idx)
+{
+    uint64 offset = 0;
+
+    offset = tbl_idx * sizeof(WASMTable);
+
+    return offset;
+}
 
 // 参数和返回值的内存由调用者提供
 static bool jit_call_indirect(JITCompContext *comp_ctx, JITFuncContext *func_ctx, WASMType *wasm_type,
@@ -106,139 +115,12 @@ static bool jit_call_indirect(JITCompContext *comp_ctx, JITFuncContext *func_ctx
 }
 
 static bool
-create_func_return_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
-{
-    LLVMBasicBlockRef block_curr = LLVMGetInsertBlock(comp_ctx->builder);
-    WASMType *wasm_jit_func_type = func_ctx->wasm_func->func_type;
-
-    /* Create function return block if it isn't created */
-    if (!func_ctx->func_return_block)
-    {
-        if (!(func_ctx->func_return_block = LLVMAppendBasicBlockInContext(
-                  comp_ctx->context, func_ctx->func, "func_ret")))
-        {
-            wasm_jit_set_last_error("llvm add basic block failed.");
-            return false;
-        }
-
-        /* Create return IR */
-        LLVMPositionBuilderAtEnd(comp_ctx->builder,
-                                 func_ctx->func_return_block);
-        if (!comp_ctx->enable_bound_check)
-        {
-            if (!wasm_jit_emit_exception(comp_ctx, func_ctx, EXCE_ALREADY_THROWN,
-                                         false, NULL, NULL))
-            {
-                return false;
-            }
-        }
-        else if (!wasm_jit_build_zero_function_ret(comp_ctx, func_ctx,
-                                                   wasm_jit_func_type))
-        {
-            return false;
-        }
-    }
-
-    LLVMPositionBuilderAtEnd(comp_ctx->builder, block_curr);
-    return true;
-}
-
-/* Check whether there was exception thrown, if yes, return directly */
-static bool
-check_call_return(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                  LLVMValueRef res)
-{
-    LLVMBasicBlockRef block_curr, check_call_succ;
-    LLVMValueRef cmp;
-
-    /* Create function return block if it isn't created */
-    if (!create_func_return_block(comp_ctx, func_ctx))
-        return false;
-
-    if (!(cmp = LLVMBuildICmp(comp_ctx->builder, LLVMIntNE, res, I8_ZERO,
-                              "cmp")))
-    {
-        wasm_jit_set_last_error("llvm build icmp failed.");
-        return false;
-    }
-
-    /* Add check exection success block */
-    if (!(check_call_succ = LLVMAppendBasicBlockInContext(
-              comp_ctx->context, func_ctx->func, "check_call_succ")))
-    {
-        wasm_jit_set_last_error("llvm add basic block failed.");
-        return false;
-    }
-
-    block_curr = LLVMGetInsertBlock(comp_ctx->builder);
-    LLVMMoveBasicBlockAfter(check_call_succ, block_curr);
-
-    LLVMPositionBuilderAtEnd(comp_ctx->builder, block_curr);
-    /* Create condition br */
-    if (!LLVMBuildCondBr(comp_ctx->builder, cmp, check_call_succ,
-                         func_ctx->func_return_block))
-    {
-        wasm_jit_set_last_error("llvm build cond br failed.");
-        return false;
-    }
-
-    LLVMPositionBuilderAtEnd(comp_ctx->builder, check_call_succ);
-    return true;
-}
-
-/* Check whether there was exception thrown, if yes, return directly */
-static bool
-check_exception_thrown(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
-{
-    LLVMBasicBlockRef block_curr, check_exce_succ;
-    LLVMValueRef value, cmp;
-
-    /* Create function return block if it isn't created */
-    if (!create_func_return_block(comp_ctx, func_ctx))
-        return false;
-
-    /* Load the first byte of wasm_jit_module_inst->cur_exception, and check
-       whether it is '\0'. If yes, no exception was thrown. */
-    if (!(value = LLVMBuildLoad2(comp_ctx->builder, INT8_TYPE,
-                                 func_ctx->cur_exception, "exce_value")) ||
-        !(cmp = LLVMBuildICmp(comp_ctx->builder, LLVMIntEQ, value, I8_ZERO,
-                              "cmp")))
-    {
-        wasm_jit_set_last_error("llvm build icmp failed.");
-        return false;
-    }
-
-    /* Add check exection success block */
-    if (!(check_exce_succ = LLVMAppendBasicBlockInContext(
-              comp_ctx->context, func_ctx->func, "check_exce_succ")))
-    {
-        wasm_jit_set_last_error("llvm add basic block failed.");
-        return false;
-    }
-
-    block_curr = LLVMGetInsertBlock(comp_ctx->builder);
-    LLVMMoveBasicBlockAfter(check_exce_succ, block_curr);
-
-    LLVMPositionBuilderAtEnd(comp_ctx->builder, block_curr);
-    /* Create condition br */
-    if (!LLVMBuildCondBr(comp_ctx->builder, cmp, check_exce_succ,
-                         func_ctx->func_return_block))
-    {
-        wasm_jit_set_last_error("llvm build cond br failed.");
-        return false;
-    }
-
-    LLVMPositionBuilderAtEnd(comp_ctx->builder, check_exce_succ);
-    return true;
-}
-
-static bool
 jit_call_direct(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                 WASMType *wasm_type, JITFuncType *jit_func_type, LLVMValueRef llvm_func_idx, LLVMValueRef *llvm_param_values, LLVMValueRef *llvm_ret_values)
 {
-    LLVMValueRef func, llvm_ret, ext_ret, llvm_func_ptr, llvm_func_ptr_type, llvm_func;
+    LLVMValueRef llvm_ret, ext_ret, llvm_func_ptr, llvm_func;
     LLVMBuilderRef builder = comp_ctx->builder;
-    LLVMTypeRef llvm_func_type, *llvm_ext_result_types;
+    LLVMTypeRef llvm_func_type, *llvm_ext_result_types, llvm_func_ptr_type;
     uint32 i;
     uint8 *wasm_result_types = wasm_type->result;
     uint32 param_count = wasm_type->param_count;
@@ -279,7 +161,7 @@ jit_call_direct(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         {
             snprintf(buf, sizeof(buf), "func_ext_ret%d", i);
             if (!(ext_ret = LLVMBuildLoad2(
-                      comp_ctx->builder, llvm_ext_result_types,
+                      comp_ctx->builder, llvm_ext_result_types[i],
                       llvm_param_values[1 + param_count + i], buf)))
             {
                 wasm_jit_set_last_error("llvm build load failed.");
@@ -396,12 +278,12 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     LLVMValueRef ftype_idx_ptr, ftype_idx, ftype_idx_const, llvm_import_func_count;
     LLVMValueRef cmp_elem_idx, cmp_func_idx, cmp_ftype_idx;
     LLVMValueRef llvm_func, func_ptr, table_size_const;
-    LLVMValueRef ext_ret_offset, ext_ret_ptr, ext_ret;
+    LLVMValueRef ext_ret_offset, ext_ret_ptr;
     LLVMValueRef *llvm_param_values = NULL, *llvm_ret_values = NULL;
-    LLVMValueRef *result_phis = NULL, value_ret;
+    LLVMValueRef *result_phis = NULL;
     LLVMTypeRef *llvm_param_types = NULL;
-    LLVMTypeRef llvm_func_type, llvm_func_ptr_type;
-    LLVMTypeRef ext_ret_ptr_type, llvm_ret_type;
+    LLVMTypeRef llvm_func_type;
+    LLVMTypeRef ext_ret_ptr_type;
     LLVMBasicBlockRef check_elem_idx_succ, check_ftype_idx_succ;
     LLVMBasicBlockRef check_func_idx_succ, block_return, block_curr;
     LLVMBasicBlockRef block_call_import, block_call_non_import;
@@ -410,14 +292,13 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     JITFuncType *jit_func_type;
     uint32 total_param_count, param_count, result_count;
     uint32 ext_cell_num, i, j;
-    uint8 *wasm_param_types, *wasm_result_types;
+    uint8 *wasm_result_types;
     uint64 total_size;
     char buf[32];
     bool ret = false;
 
     wasm_type = wasm_module->types[type_idx];
     jit_func_type = comp_ctx->jit_func_types + type_idx;
-    wasm_param_types = wasm_type->param;
     wasm_result_types = wasm_type->result;
     param_count = wasm_type->param_count;
     result_count = wasm_type->result_count;
@@ -750,55 +631,4 @@ fail:
     if (result_phis)
         wasm_runtime_free(result_phis);
     return ret;
-}
-
-bool wasm_jit_compile_op_ref_null(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
-{
-    PUSH_I32(REF_NULL);
-
-    return true;
-}
-
-bool wasm_jit_compile_op_ref_is_null(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
-{
-    LLVMValueRef lhs, res;
-
-    POP_I32(lhs);
-
-    if (!(res = LLVMBuildICmp(comp_ctx->builder, LLVMIntEQ, lhs, REF_NULL,
-                              "cmp_w_null")))
-    {
-        HANDLE_FAILURE("LLVMBuildICmp");
-        goto fail;
-    }
-
-    if (!(res = LLVMBuildZExt(comp_ctx->builder, res, I32_TYPE, "r_i")))
-    {
-        HANDLE_FAILURE("LLVMBuildZExt");
-        goto fail;
-    }
-
-    PUSH_I32(res);
-
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_ref_func(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                  uint32 func_idx)
-{
-    LLVMValueRef ref_idx;
-
-    if (!(ref_idx = I32_CONST(func_idx)))
-    {
-        HANDLE_FAILURE("LLVMConstInt");
-        goto fail;
-    }
-
-    PUSH_I32(ref_idx);
-
-    return true;
-fail:
-    return false;
 }

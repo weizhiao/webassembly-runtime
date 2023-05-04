@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/runtime",
-            "args": ["--dir=.","auth2.wasm"],
+            "args": ["test.wasm"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
             "environment": [],

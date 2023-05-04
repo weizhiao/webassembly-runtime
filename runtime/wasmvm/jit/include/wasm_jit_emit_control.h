@@ -1,5 +1,5 @@
-#ifndef _wasm_jit_EMIT_CONTROL_H_
-#define _wasm_jit_EMIT_CONTROL_H_
+#ifndef _WASM_JIT_EMIT_CONTROL_H_
+#define _WASM_JIT_EMIT_CONTROL_H_
 
 #include "wasm_jit_compiler.h"
 
@@ -25,4 +25,4 @@ bool wasm_jit_compile_op_return(JITCompContext *comp_ctx, JITFuncContext *func_c
 
 bool wasm_jit_compile_op_unreachable(JITCompContext *comp_ctx, JITFuncContext *func_ctx, uint8 **frame_ip);
 
-#endif /* end of _wasm_jit_EMIT_CONTROL_H_ */
+#endif /* end of _WASM_JIT_EMIT_CONTROL_H_ */

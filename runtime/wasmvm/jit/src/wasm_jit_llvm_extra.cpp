@@ -48,8 +48,6 @@ using namespace llvm::orc;
 
 LLVM_C_EXTERN_C_BEGIN
 
-bool wasm_jit_check_simd_compatibility(const char *arch_c_str, const char *cpu_c_str);
-
 void wasm_jit_add_expand_memory_op_pass(LLVMPassManagerRef pass);
 
 void wasm_jit_add_simple_loop_unswitch_pass(LLVMPassManagerRef pass);
@@ -172,52 +170,6 @@ void wasm_jit_add_simple_loop_unswitch_pass(LLVMPassManagerRef pass)
         createSimpleLoopUnswitchLegacyPass());
 }
 
-bool wasm_jit_check_simd_compatibility(const char *arch_c_str, const char *cpu_c_str)
-{
-#if WASM_ENABLE_SIMD != 0
-    if (!arch_c_str || !cpu_c_str)
-    {
-        return false;
-    }
-
-    llvm::SmallVector<std::string, 1> targetAttributes;
-    llvm::Triple targetTriple(arch_c_str, "", "");
-    auto targetMachine =
-        std::unique_ptr<llvm::TargetMachine>(llvm::EngineBuilder().selectTarget(
-            targetTriple, "", std::string(cpu_c_str), targetAttributes));
-    if (!targetMachine)
-    {
-        return false;
-    }
-
-    const llvm::Triple::ArchType targetArch =
-        targetMachine->getTargetTriple().getArch();
-    const llvm::MCSubtargetInfo *subTargetInfo =
-        targetMachine->getMCSubtargetInfo();
-    if (subTargetInfo == nullptr)
-    {
-        return false;
-    }
-
-    if (targetArch == llvm::Triple::x86_64)
-    {
-        return subTargetInfo->checkFeatures("+sse4.1");
-    }
-    else if (targetArch == llvm::Triple::aarch64)
-    {
-        return subTargetInfo->checkFeatures("+neon");
-    }
-    else
-    {
-        return false;
-    }
-#else
-    (void)arch_c_str;
-    (void)cpu_c_str;
-    return true;
-#endif /* WASM_ENABLE_SIMD */
-}
-
 void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRef module)
 {
     TargetMachine *TM =
@@ -228,16 +180,7 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
     PTO.SLPVectorization = true;
     PTO.LoopUnrolling = true;
 
-#ifdef DEBUG_PASS
-    PassInstrumentationCallbacks PIC;
-    PassBuilder PB(TM, PTO, std::nullopt, &PIC);
-#else
-#if LLVM_VERSION_MAJOR == 12
-    PassBuilder PB(false, TM, PTO);
-#else
     PassBuilder PB(TM, PTO);
-#endif
-#endif
 
     /* Register all the basic analyses with the managers */
     LoopAnalysisManager LAM;
@@ -257,37 +200,12 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
     FAM.registerPass([&]
                      { return std::move(AA); });
 
-#ifdef DEBUG_PASS
-    StandardInstrumentations SI(*CONTEXT, true, false);
-    SI.registerCallbacks(PIC, &FAM);
-#endif
-
     PB.registerFunctionAnalyses(FAM);
     PB.registerLoopAnalyses(LAM);
     PB.registerModuleAnalyses(MAM);
     PB.registerCGSCCAnalyses(CGAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-#if LLVM_VERSION_MAJOR <= 13
-    PassBuilder::OptimizationLevel OL;
-
-    switch (comp_ctx->opt_level)
-    {
-    case 0:
-        OL = PassBuilder::OptimizationLevel::O0;
-        break;
-    case 1:
-        OL = PassBuilder::OptimizationLevel::O1;
-        break;
-    case 2:
-        OL = PassBuilder::OptimizationLevel::O2;
-        break;
-    case 3:
-    default:
-        OL = PassBuilder::OptimizationLevel::O3;
-        break;
-    }
-#else
     OptimizationLevel OL;
 
     switch (comp_ctx->opt_level)
@@ -306,12 +224,8 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
         OL = OptimizationLevel::O3;
         break;
     }
-#endif /* end of LLVM_VERSION_MAJOR */
 
     bool disable_llvm_lto = comp_ctx->disable_llvm_lto;
-#if WASM_ENABLE_SPEC_TEST != 0
-    disable_llvm_lto = true;
-#endif
 
     Module *M = reinterpret_cast<Module *>(module);
     if (disable_llvm_lto)

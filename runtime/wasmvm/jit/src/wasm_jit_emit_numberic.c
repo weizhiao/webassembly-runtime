@@ -1,7 +1,6 @@
 #include "wasm_jit_emit_numberic.h"
 #include "wasm_jit_emit_exception.h"
 #include "wasm_jit_emit_control.h"
-#include "wasm_jit_intrinsic.h"
 
 #include <stdarg.h>
 
@@ -16,30 +15,13 @@
         }                                                                   \
     } while (0)
 
-#define LLVM_BUILD_OP(Op, left, right, res, name, err_ret)                \
+#define LLVM_BUILD_OP_OR_INTRINSIC(Op, left, right, res, intrinsic, name, \
+                                   err_ret)                               \
     do                                                                    \
     {                                                                     \
-        if (!(res = LLVMBuild##Op(comp_ctx->builder, left, right, name))) \
-        {                                                                 \
-            wasm_jit_set_last_error("llvm build " #name " fail.");        \
-            return err_ret;                                               \
-        }                                                                 \
-    } while (0)
-
-#define LLVM_BUILD_OP_OR_INTRINSIC(Op, left, right, res, intrinsic, name,                                  \
-                                   err_ret)                                                                \
-    do                                                                                                     \
-    {                                                                                                      \
-        if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, intrinsic)) \
-        {                                                                                                  \
-            res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, intrinsic,                              \
-                                               param_types[0], param_types, 2,                             \
-                                               left, right);                                               \
-        }                                                                                                  \
-        else                                                                                               \
-        {                                                                                                  \
-            LLVM_BUILD_OP(Op, left, right, res, name, false);                                              \
-        }                                                                                                  \
+                                                                          \
+        LLVM_OP_TEMPLATE(Op, left, right, res, name);                     \
+                                                                          \
     } while (0)
 
 #define ADD_BASIC_BLOCK(block, name)                                           \
@@ -55,24 +37,18 @@
         LLVMMoveBasicBlockAfter(block, LLVMGetInsertBlock(comp_ctx->builder)); \
     } while (0)
 
-#if LLVM_VERSION_NUMBER >= 12
 #define IS_CONST_ZERO(val) \
     (!LLVMIsUndef(val) && !LLVMIsPoison(val) && LLVMIsConstant(val) && ((is_i32 && (int32)LLVMConstIntGetZExtValue(val) == 0) || (!is_i32 && (int64)LLVMConstIntGetSExtValue(val) == 0)))
-#else
-#define IS_CONST_ZERO(val) \
-    (!LLVMIsUndef(val) && LLVMIsConstant(val) && ((is_i32 && (int32)LLVMConstIntGetZExtValue(val) == 0) || (!is_i32 && (int64)LLVMConstIntGetSExtValue(val) == 0)))
-#endif
 
-#define CHECK_INT_OVERFLOW(type)                                           \
-    do                                                                     \
-    {                                                                      \
-        LLVMValueRef cmp_min_int, cmp_neg_one;                             \
-        LLVM_BUILD_ICMP(LLVMIntEQ, left, type##_MIN, cmp_min_int,          \
-                        "cmp_min_int");                                    \
-        LLVM_BUILD_ICMP(LLVMIntEQ, right, type##_NEG_ONE, cmp_neg_one,     \
-                        "cmp_neg_one");                                    \
-        LLVM_BUILD_OP(And, cmp_min_int, cmp_neg_one, overflow, "overflow", \
-                      false);                                              \
+#define CHECK_INT_OVERFLOW(type)                                       \
+    do                                                                 \
+    {                                                                  \
+        LLVMValueRef cmp_min_int, cmp_neg_one;                         \
+        LLVM_BUILD_ICMP(LLVMIntEQ, left, type##_MIN, cmp_min_int,      \
+                        "cmp_min_int");                                \
+        LLVM_BUILD_ICMP(LLVMIntEQ, right, type##_NEG_ONE, cmp_neg_one, \
+                        "cmp_neg_one");                                \
+        LLVMOPAnd(cmp_min_int, cmp_neg_one, overflow, "overflow");     \
     } while (0)
 
 #define PUSH_INT(v) PUSH(v)
@@ -141,21 +117,17 @@
         PUSH_FLOAT(res);                      \
     } while (0)
 
-#define SHIFT_COUNT_MASK                                               \
-    do                                                                 \
-    {                                                                  \
-        /* LLVM has undefined behavior if shift count is greater than  \
-         *  bits count while Webassembly spec requires the shift count \
-         *  be wrapped.                                                \
-         */                                                            \
-        LLVMValueRef shift_count_mask, bits_minus_one;                 \
-        bits_minus_one = is_i32 ? I32_31 : I64_63;                     \
-        LLVM_BUILD_OP(And, right, bits_minus_one, shift_count_mask,    \
-                      "shift_count_mask", NULL);                       \
-        right = shift_count_mask;                                      \
+#define SHIFT_COUNT_MASK                                   \
+    do                                                     \
+    {                                                      \
+        LLVMValueRef shift_count_mask, bits_minus_one;     \
+        bits_minus_one = is_i32 ? I32_31 : I64_63;         \
+        LLVMOPAnd(right, bits_minus_one, shift_count_mask, \
+                  "shift_count_mask");                     \
+        right = shift_count_mask;                          \
     } while (0)
 
-/* Call llvm constrained floating-point intrinsic */
+#if WASM_ENABLE_FPU != 0
 static LLVMValueRef
 call_llvm_float_experimental_constrained_intrinsic(JITCompContext *comp_ctx,
                                                    JITFuncContext *func_ctx,
@@ -165,9 +137,7 @@ call_llvm_float_experimental_constrained_intrinsic(JITCompContext *comp_ctx,
     va_list param_value_list;
     LLVMValueRef ret;
     LLVMTypeRef param_types[4], ret_type = is_f32 ? F32_TYPE : F64_TYPE;
-    int param_count = (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, intrinsic))
-                          ? 2
-                          : 4;
+    int param_count = 4;
 
     param_types[0] = param_types[1] = ret_type;
     param_types[2] = param_types[3] = MD_TYPE;
@@ -205,6 +175,8 @@ call_llvm_libm_experimental_constrained_intrinsic(JITCompContext *comp_ctx,
 
     return ret;
 }
+
+#endif
 
 static LLVMValueRef
 compile_op_float_min_max(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
@@ -260,14 +232,6 @@ compile_op_float_min_max(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                                              param_types, 2, left, right)))
         return NULL;
 
-    /* The result of XIP intrinsic is 0 or 1, should return it directly */
-
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx,
-                                                                                 is_f32 ? "f32_cmp" : "f64_cmp"))
-    {
-        return cmp;
-    }
-
     if (!(cmp = LLVMBuildSelect(comp_ctx->builder, is_eq, tmp, cmp, "cmp")))
     {
         wasm_jit_set_last_error("llvm build select fail.");
@@ -318,7 +282,6 @@ wasm_jit_compile_int_bit_count(JITCompContext *comp_ctx, JITFuncContext *func_ct
     param_types[1] = LLVMInt1TypeInContext(comp_ctx->context);
 
     zero_undef = LLVMConstInt(param_types[1], false, true);
-    CHECK_LLVM_CONST(zero_undef);
 
     /* Call the LLVM intrinsic function */
     if (type < POP_CNT32)
@@ -333,9 +296,6 @@ wasm_jit_compile_int_bit_count(JITCompContext *comp_ctx, JITFuncContext *func_ct
                          NULL);
 
     return true;
-
-fail:
-    return false;
 }
 
 static bool
@@ -410,26 +370,11 @@ compile_int_div(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMValueRef left, right, cmp_div_zero, overflow, res;
     LLVMBasicBlockRef check_div_zero_succ, check_overflow_succ;
     LLVMTypeRef param_types[2];
-    const char *intrinsic = NULL;
 
     param_types[1] = param_types[0] = is_i32 ? I32_TYPE : I64_TYPE;
 
     POP_INT(right);
     POP_INT(left);
-
-    if (LLVMIsUndef(right) || LLVMIsUndef(left)
-#if LLVM_VERSION_NUMBER >= 12
-        || LLVMIsPoison(right) || LLVMIsPoison(left)
-#endif
-    )
-    {
-        if (!(wasm_jit_emit_exception(comp_ctx, func_ctx, EXCE_INTEGER_OVERFLOW,
-                                      false, NULL, NULL)))
-        {
-            goto fail;
-        }
-        return true;
-    }
 
     if (LLVMIsConstant(right))
     {
@@ -552,17 +497,9 @@ compile_int_div(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
             PUSH_INT(res);
             return true;
         case INT_DIV_U:
-            intrinsic = is_i32 ? "i32.div_u" : "i64.div_u";
-            if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, intrinsic))
-            {
-                res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, intrinsic,
-                                                   param_types[0], param_types,
-                                                   2, left, right);
-            }
-            else
-            {
-                LLVM_BUILD_OP(UDiv, left, right, res, "div_u", false);
-            }
+
+            LLVMOPUDiv(left, right, res, "div_u");
+
             PUSH_INT(res);
             return true;
         case INT_REM_S:
@@ -606,11 +543,10 @@ static LLVMValueRef
 compile_int_sub(JITCompContext *comp_ctx, LLVMValueRef left, LLVMValueRef right,
                 bool is_i32)
 {
-    /* If the right operand is 0, just return the left */
+
     if (IS_CONST_ZERO(right))
         return left;
 
-    /* Build sub */
     return LLVMBuildSub(comp_ctx->builder, left, right, "sub");
 }
 
@@ -618,11 +554,9 @@ static LLVMValueRef
 compile_int_mul(JITCompContext *comp_ctx, LLVMValueRef left, LLVMValueRef right,
                 bool is_i32)
 {
-    /* If one of the operands is 0, just return constant 0 */
     if (IS_CONST_ZERO(left) || IS_CONST_ZERO(right))
         return is_i32 ? I32_ZERO : I64_ZERO;
 
-    /* Build mul */
     return LLVMBuildMul(comp_ctx->builder, left, right, "mul");
 }
 
@@ -654,9 +588,6 @@ compile_op_int_arithmetic(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     default:;
         return false;
     }
-
-fail:
-    return false;
 }
 
 static bool
@@ -682,9 +613,6 @@ compile_op_int_bitwise(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     default:;
         return false;
     }
-
-fail:
-    return false;
 }
 
 static LLVMValueRef
@@ -696,8 +624,7 @@ compile_int_shl(JITCompContext *comp_ctx, LLVMValueRef left, LLVMValueRef right,
     if (strcmp(comp_ctx->target_arch, "x86_64") != 0 && strcmp(comp_ctx->target_arch, "i386") != 0)
         SHIFT_COUNT_MASK;
 
-    /* Build shl */
-    LLVM_BUILD_OP(Shl, left, right, res, "shl", NULL);
+    LLVMOPShl(left, right, res, "shl");
 
     return res;
 }
@@ -711,8 +638,7 @@ compile_int_shr_s(JITCompContext *comp_ctx, LLVMValueRef left,
     if (strcmp(comp_ctx->target_arch, "x86_64") != 0 && strcmp(comp_ctx->target_arch, "i386") != 0)
         SHIFT_COUNT_MASK;
 
-    /* Build shl */
-    LLVM_BUILD_OP(AShr, left, right, res, "shr_s", NULL);
+    LLVMOPAShr(left, right, res, "shr_s");
 
     return res;
 }
@@ -726,8 +652,7 @@ compile_int_shr_u(JITCompContext *comp_ctx, LLVMValueRef left,
     if (strcmp(comp_ctx->target_arch, "x86_64") != 0 && strcmp(comp_ctx->target_arch, "i386") != 0)
         SHIFT_COUNT_MASK;
 
-    /* Build shl */
-    LLVM_BUILD_OP(LShr, left, right, res, "shr_u", NULL);
+    LLVMOPLShr(left, right, res, "shr_u");
 
     return res;
 }
@@ -741,28 +666,24 @@ compile_int_rot(JITCompContext *comp_ctx, LLVMValueRef left, LLVMValueRef right,
 
     SHIFT_COUNT_MASK;
 
-    /* rotl/rotr with 0 */
     if (IS_CONST_ZERO(right))
         return left;
 
-    /* Calculate (bits - shif_count) */
-    LLVM_BUILD_OP(Sub, is_i32 ? I32_32 : I64_64, right, bits_minus_shift_count,
-                  "bits_minus_shift_count", NULL);
+    LLVMOPSub(is_i32 ? I32_32 : I64_64, right, bits_minus_shift_count,
+              "bits_minus_shift_count");
 
     if (is_rotl)
     {
-        /* left<<count | left>>(BITS-count) */
-        LLVM_BUILD_OP(Shl, left, right, tmp_l, "tmp_l", NULL);
-        LLVM_BUILD_OP(LShr, left, bits_minus_shift_count, tmp_r, "tmp_r", NULL);
+        LLVMOPShl(left, right, tmp_l, "tmp_l");
+        LLVMOPLShr(left, bits_minus_shift_count, tmp_r, "tmp_r");
     }
     else
     {
-        /* left>>count | left<<(BITS-count) */
-        LLVM_BUILD_OP(LShr, left, right, tmp_l, "tmp_l", NULL);
-        LLVM_BUILD_OP(Shl, left, bits_minus_shift_count, tmp_r, "tmp_r", NULL);
+        LLVMOPLShr(left, right, tmp_l, "tmp_l");
+        LLVMOPShl(left, bits_minus_shift_count, tmp_r, "tmp_r");
     }
 
-    LLVM_BUILD_OP(Or, tmp_l, tmp_r, res, name, NULL);
+    LLVMOPOr(tmp_l, tmp_r, res, name);
 
     return res;
 }
@@ -796,96 +717,6 @@ compile_op_int_shift(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     default:;
         return false;
     }
-
-fail:
-    return false;
-}
-
-static bool
-is_target_arm(JITCompContext *comp_ctx)
-{
-    return !strncmp(comp_ctx->target_arch, "arm", 3) || !strncmp(comp_ctx->target_arch, "aarch64", 7) || !strncmp(comp_ctx->target_arch, "thumb", 5);
-}
-
-static bool
-is_target_x86(JITCompContext *comp_ctx)
-{
-    return !strncmp(comp_ctx->target_arch, "x86_64", 6) || !strncmp(comp_ctx->target_arch, "i386", 4);
-}
-
-static bool
-is_target_xtensa(JITCompContext *comp_ctx)
-{
-    return !strncmp(comp_ctx->target_arch, "xtensa", 6);
-}
-
-static bool
-is_target_mips(JITCompContext *comp_ctx)
-{
-    return !strncmp(comp_ctx->target_arch, "mips", 4);
-}
-
-static bool
-is_target_riscv(JITCompContext *comp_ctx)
-{
-    return !strncmp(comp_ctx->target_arch, "riscv", 5);
-}
-
-static bool
-is_targeting_soft_float(JITCompContext *comp_ctx, bool is_f32)
-{
-    bool ret = false;
-    char *feature_string;
-
-    if (!(feature_string =
-              LLVMGetTargetMachineFeatureString(comp_ctx->target_machine)))
-    {
-        wasm_jit_set_last_error("llvm get target machine feature string fail.");
-        return false;
-    }
-
-    /* Note:
-     * LLVM CodeGen uses FPU Coprocessor registers by default,
-     * so user must specify '--cpu-features=+soft-float' to wamrc if the target
-     * doesn't have or enable FPU on arm, x86 or mips. */
-    if (is_target_arm(comp_ctx) || is_target_x86(comp_ctx) || is_target_mips(comp_ctx))
-    {
-        ret = strstr(feature_string, "+soft-float") ? true : false;
-    }
-    else if (is_target_xtensa(comp_ctx))
-    {
-        /* Note:
-         * 1. The Floating-Point Coprocessor Option of xtensa only support
-         * single-precision floating-point operations, so must use soft-float
-         * for f64(i.e. double).
-         * 2. LLVM CodeGen uses Floating-Point Coprocessor registers by default,
-         * so user must specify '--cpu-features=-fp' to wamrc if the target
-         * doesn't have or enable Floating-Point Coprocessor Option on xtensa.
-         */
-        if (comp_ctx->disable_llvm_intrinsics)
-            ret = false;
-        else
-            ret = (!is_f32 || strstr(feature_string, "-fp")) ? true : false;
-    }
-    else if (is_target_riscv(comp_ctx))
-    {
-        /*
-         * Note: Use builtin intrinsics since hardware float operation
-         * will cause rodata relocation, this will try to use hardware
-         * float unit (by return false) but handled by software finally
-         */
-        if (comp_ctx->disable_llvm_intrinsics)
-            ret = false;
-        else
-            ret = !strstr(feature_string, "+d") ? true : false;
-    }
-    else
-    {
-        ret = true;
-    }
-
-    LLVMDisposeMessage(feature_string);
-    return ret;
 }
 
 static bool
@@ -895,64 +726,70 @@ compile_op_float_arithmetic(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     switch (arith_op)
     {
     case FLOAT_ADD:
-        if (is_targeting_soft_float(comp_ctx, is_f32))
-            DEF_FP_BINARY_OP(
-                LLVMBuildFAdd(comp_ctx->builder, left, right, "fadd"),
-                "llvm build fadd fail.");
-        else
-            DEF_FP_BINARY_OP(
-                call_llvm_float_experimental_constrained_intrinsic(
-                    comp_ctx, func_ctx, is_f32,
-                    (is_f32 ? "llvm.experimental.constrained.fadd.f32"
-                            : "llvm.experimental.constrained.fadd.f64"),
-                    left, right, comp_ctx->fp_rounding_mode,
-                    comp_ctx->fp_exception_behavior),
-                NULL);
+#if WASM_ENABLE_FPU == 0
+        DEF_FP_BINARY_OP(
+            LLVMBuildFAdd(comp_ctx->builder, left, right, "fadd"),
+            "llvm build fadd fail.");
+#else
+        DEF_FP_BINARY_OP(
+            call_llvm_float_experimental_constrained_intrinsic(
+                comp_ctx, func_ctx, is_f32,
+                (is_f32 ? "llvm.experimental.constrained.fadd.f32"
+                        : "llvm.experimental.constrained.fadd.f64"),
+                left, right, comp_ctx->fp_rounding_mode,
+                comp_ctx->fp_exception_behavior),
+            NULL);
+#endif
         return true;
     case FLOAT_SUB:
-        if (is_targeting_soft_float(comp_ctx, is_f32))
-            DEF_FP_BINARY_OP(
-                LLVMBuildFSub(comp_ctx->builder, left, right, "fsub"),
-                "llvm build fsub fail.");
-        else
-            DEF_FP_BINARY_OP(
-                call_llvm_float_experimental_constrained_intrinsic(
-                    comp_ctx, func_ctx, is_f32,
-                    (is_f32 ? "llvm.experimental.constrained.fsub.f32"
-                            : "llvm.experimental.constrained.fsub.f64"),
-                    left, right, comp_ctx->fp_rounding_mode,
-                    comp_ctx->fp_exception_behavior),
-                NULL);
+#if WASM_ENABLE_FPU == 0
+
+        DEF_FP_BINARY_OP(
+            LLVMBuildFSub(comp_ctx->builder, left, right, "fsub"),
+            "llvm build fsub fail.");
+#else
+        DEF_FP_BINARY_OP(
+            call_llvm_float_experimental_constrained_intrinsic(
+                comp_ctx, func_ctx, is_f32,
+                (is_f32 ? "llvm.experimental.constrained.fsub.f32"
+                        : "llvm.experimental.constrained.fsub.f64"),
+                left, right, comp_ctx->fp_rounding_mode,
+                comp_ctx->fp_exception_behavior),
+            NULL);
+#endif
         return true;
     case FLOAT_MUL:
-        if (is_targeting_soft_float(comp_ctx, is_f32))
-            DEF_FP_BINARY_OP(
-                LLVMBuildFMul(comp_ctx->builder, left, right, "fmul"),
-                "llvm build fmul fail.");
-        else
-            DEF_FP_BINARY_OP(
-                call_llvm_float_experimental_constrained_intrinsic(
-                    comp_ctx, func_ctx, is_f32,
-                    (is_f32 ? "llvm.experimental.constrained.fmul.f32"
-                            : "llvm.experimental.constrained.fmul.f64"),
-                    left, right, comp_ctx->fp_rounding_mode,
-                    comp_ctx->fp_exception_behavior),
-                NULL);
+#if WASM_ENABLE_FPU == 0
+        DEF_FP_BINARY_OP(
+            LLVMBuildFMul(comp_ctx->builder, left, right, "fmul"),
+            "llvm build fmul fail.");
+#else
+        DEF_FP_BINARY_OP(
+            call_llvm_float_experimental_constrained_intrinsic(
+                comp_ctx, func_ctx, is_f32,
+                (is_f32 ? "llvm.experimental.constrained.fmul.f32"
+                        : "llvm.experimental.constrained.fmul.f64"),
+                left, right, comp_ctx->fp_rounding_mode,
+                comp_ctx->fp_exception_behavior),
+            NULL);
+#endif
         return true;
     case FLOAT_DIV:
-        if (is_targeting_soft_float(comp_ctx, is_f32))
-            DEF_FP_BINARY_OP(
-                LLVMBuildFDiv(comp_ctx->builder, left, right, "fdiv"),
-                "llvm build fdiv fail.");
-        else
-            DEF_FP_BINARY_OP(
-                call_llvm_float_experimental_constrained_intrinsic(
-                    comp_ctx, func_ctx, is_f32,
-                    (is_f32 ? "llvm.experimental.constrained.fdiv.f32"
-                            : "llvm.experimental.constrained.fdiv.f64"),
-                    left, right, comp_ctx->fp_rounding_mode,
-                    comp_ctx->fp_exception_behavior),
-                NULL);
+
+#if WASM_ENABLE_FPU == 0
+        DEF_FP_BINARY_OP(
+            LLVMBuildFDiv(comp_ctx->builder, left, right, "fdiv"),
+            "llvm build fdiv fail.");
+#else
+        DEF_FP_BINARY_OP(
+            call_llvm_float_experimental_constrained_intrinsic(
+                comp_ctx, func_ctx, is_f32,
+                (is_f32 ? "llvm.experimental.constrained.fdiv.f32"
+                        : "llvm.experimental.constrained.fdiv.f64"),
+                left, right, comp_ctx->fp_rounding_mode,
+                comp_ctx->fp_exception_behavior),
+            NULL);
+#endif
         return true;
     case FLOAT_MIN:
         DEF_FP_BINARY_OP(compile_op_float_min_max(
@@ -969,9 +806,6 @@ compile_op_float_arithmetic(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     default:;
         return false;
     }
-
-fail:
-    return false;
 }
 
 static LLVMValueRef
@@ -1042,30 +876,28 @@ compile_op_float_math(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                         NULL);
         return true;
     case FLOAT_SQRT:
-        if (is_targeting_soft_float(comp_ctx, is_f32) || comp_ctx->disable_llvm_intrinsics)
-            DEF_FP_UNARY_OP(call_llvm_float_math_intrinsic(
-                                comp_ctx, func_ctx, is_f32,
-                                is_f32 ? "llvm.sqrt.f32" : "llvm.sqrt.f64",
-                                operand),
-                            NULL);
-        else
-            DEF_FP_UNARY_OP(
-                call_llvm_libm_experimental_constrained_intrinsic(
-                    comp_ctx, func_ctx, is_f32,
-                    (is_f32 ? "llvm.experimental.constrained.sqrt.f32"
-                            : "llvm.experimental.constrained.sqrt.f64"),
-                    operand, comp_ctx->fp_rounding_mode,
-                    comp_ctx->fp_exception_behavior),
-                NULL);
+#if WASM_ENABLE_FPU == 0
+        DEF_FP_UNARY_OP(call_llvm_float_math_intrinsic(
+                            comp_ctx, func_ctx, is_f32,
+                            is_f32 ? "llvm.sqrt.f32" : "llvm.sqrt.f64",
+                            operand),
+                        NULL);
+#else
+        DEF_FP_UNARY_OP(
+            call_llvm_libm_experimental_constrained_intrinsic(
+                comp_ctx, func_ctx, is_f32,
+                (is_f32 ? "llvm.experimental.constrained.sqrt.f32"
+                        : "llvm.experimental.constrained.sqrt.f64"),
+                operand, comp_ctx->fp_rounding_mode,
+                comp_ctx->fp_exception_behavior),
+            NULL);
+#endif
         return true;
     default:;
         return false;
     }
 
     return true;
-
-fail:
-    return false;
 }
 
 static bool
@@ -1082,9 +914,6 @@ compile_float_copysign(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                          ret_type, param_types, 2, left, right),
                      NULL);
     return true;
-
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_i32_clz(JITCompContext *comp_ctx, JITFuncContext *func_ctx)

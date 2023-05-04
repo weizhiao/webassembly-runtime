@@ -1,7 +1,6 @@
 #include "wasm_loader.h"
 
-bool
-load_data_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
+bool load_data_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     uint32 data_seg_count, i, mem_index, data_seg_len;
@@ -10,15 +9,18 @@ load_data_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
 
     read_leb_uint32(p, p_end, data_seg_count);
 
-    if (data_seg_count) {
+    if (data_seg_count)
+    {
         module->data_seg_count = data_seg_count;
         total_size = sizeof(WASMDataSeg) * (uint64)data_seg_count;
-        if (!(dataseg = module->data_segments = wasm_runtime_malloc(total_size))) {
+        if (!(dataseg = module->data_segments = wasm_runtime_malloc(total_size)))
+        {
             wasm_set_exception(module, "malloc error");
             return false;
         }
 
-        for (i = 0; i < data_seg_count; i++, dataseg++) {
+        for (i = 0; i < data_seg_count; i++, dataseg++)
+        {
             read_leb_uint32(p, p_end, mem_index);
             dataseg->memory_index = mem_index;
 
@@ -33,7 +35,8 @@ load_data_section(const uint8 *buf, const uint8 *buf_end, WASMModule *module)
         }
     }
 
-    if (p != p_end) {
+    if (p != p_end)
+    {
         wasm_set_exception(module, "section size mismatch");
         return false;
     }
@@ -45,10 +48,8 @@ fail:
     return false;
 }
 
-#if WASM_ENABLE_BULK_MEMORY != 0
-bool
-load_datacount_section(const uint8 *buf, const uint8 *buf_end,
-                       WASMModule *module)
+bool load_datacount_section(const uint8 *buf, const uint8 *buf_end,
+                            WASMModule *module)
 {
     const uint8 *p = buf, *p_end = buf_end;
     uint32 data_seg_count1 = 0;
@@ -56,7 +57,8 @@ load_datacount_section(const uint8 *buf, const uint8 *buf_end,
     read_leb_uint32(p, p_end, data_seg_count1);
     module->data_seg_count1 = data_seg_count1;
 
-    if (p != p_end) {
+    if (p != p_end)
+    {
         wasm_set_exception(module, "section size mismatch");
         return false;
     }
@@ -66,4 +68,3 @@ load_datacount_section(const uint8 *buf, const uint8 *buf_end,
 fail:
     return false;
 }
-#endif

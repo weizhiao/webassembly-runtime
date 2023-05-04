@@ -391,13 +391,11 @@ fail:
 static bool
 check_table_index(WASMModule *module, uint32 table_index)
 {
-#if WASM_ENABLE_REF_TYPES == 0
     if (table_index != 0)
     {
         wasm_set_exception(module, "zero byte expected");
         return false;
     }
-#endif
 
     if (table_index >= module->import_table_count + module->table_count)
     {

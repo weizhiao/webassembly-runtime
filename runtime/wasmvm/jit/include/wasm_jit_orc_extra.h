@@ -1,10 +1,5 @@
-/*
- * Copyright (C) 2019 Intel Corporation. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- */
-
-#ifndef _wasm_jit_ORC_LAZINESS_H_
-#define _wasm_jit_ORC_LAZINESS_H_
+#ifndef _WASM_JIT_ORC_LAZINESS_H_
+#define _WASM_JIT_ORC_LAZINESS_H_
 
 #include "llvm-c/Error.h"
 #include "llvm-c/ExternC.h"
@@ -18,24 +13,20 @@ typedef struct LLVMOrcOpaqueLLLazyJITBuilder *LLVMOrcLLLazyJITBuilderRef;
 typedef struct LLVMOrcOpaqueLLLazyJIT *LLVMOrcLLLazyJITRef;
 
 // Extra bindings for LLJIT
-void
-LLVMOrcLLJITBuilderSetNumCompileThreads(LLVMOrcLLJITBuilderRef Builder,
-                                        unsigned NumCompileThreads);
+void LLVMOrcLLJITBuilderSetNumCompileThreads(LLVMOrcLLJITBuilderRef Builder,
+                                             unsigned NumCompileThreads);
 
 // Extra bindings for LLLazyJIT
 LLVMOrcLLLazyJITBuilderRef
 LLVMOrcCreateLLLazyJITBuilder(void);
 
-void
-LLVMOrcDisposeLLLazyJITBuilder(LLVMOrcLLLazyJITBuilderRef Builder);
+void LLVMOrcDisposeLLLazyJITBuilder(LLVMOrcLLLazyJITBuilderRef Builder);
 
-void
-LLVMOrcLLLazyJITBuilderSetJITTargetMachineBuilder(
+void LLVMOrcLLLazyJITBuilderSetJITTargetMachineBuilder(
     LLVMOrcLLLazyJITBuilderRef Builder, LLVMOrcJITTargetMachineBuilderRef JTMP);
 
-void
-LLVMOrcLLLazyJITBuilderSetNumCompileThreads(LLVMOrcLLLazyJITBuilderRef Builder,
-                                            unsigned NumCompileThreads);
+void LLVMOrcLLLazyJITBuilderSetNumCompileThreads(LLVMOrcLLLazyJITBuilderRef Builder,
+                                                 unsigned NumCompileThreads);
 
 LLVMErrorRef
 LLVMOrcCreateLLLazyJIT(LLVMOrcLLLazyJITRef *Result,

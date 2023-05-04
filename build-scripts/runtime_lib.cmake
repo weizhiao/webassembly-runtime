@@ -5,21 +5,22 @@ set (UTILS_DIR ${RUNTIME_DIR}/utils)
 set (WASMVM_DIR ${RUNTIME_DIR}/wasmvm)
 
 #根据功能启用宏
-if (RUNTIME_BUILD_BULK_MEMORY EQUAL 1)
-    add_definitions (-DWASM_ENABLE_BULK_MEMORY=1)
-    message ("     Bulk memory feature enabled")
-else ()
-    add_definitions (-DWASM_ENABLE_BULK_MEMORY=0)
-    message ("     Bulk memory feature disabled")
-endif ()
-
 if (RUNTIME_BUILD_THREAD EQUAL 1)
     add_definitions (-DWASM_ENABLE_THREAD=1)
     message ("     multi-thread enabled")
 else ()
     add_definitions (-DWASM_ENABLE_THREAD=0)
-    message ("     multi-thread feature disabled")
+    message ("     multi-thread disabled")
 endif ()
+
+if (RUNTIME_BUILD_FPU EQUAL 1)
+    add_definitions (-DWASM_ENABLE_FPU=1)
+    message ("     fpu enabled")
+else ()
+    add_definitions (-DWASM_ENABLE_FPU=0)
+    message ("     fpu disabled")
+endif ()
+
 
 if (RUNTIME_BUILD_JIT EQUAL 1)
     add_definitions (-DWASM_ENABLE_JIT=1)

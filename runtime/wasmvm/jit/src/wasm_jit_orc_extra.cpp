@@ -240,11 +240,7 @@ LLVMOrcLLLazyJITLookup(LLVMOrcLLLazyJITRef J, LLVMOrcExecutorAddress *Result,
         return wrap(Sym.takeError());
     }
 
-#if LLVM_VERSION_MAJOR < 15
-    *Result = Sym->getAddress();
-#else
     *Result = Sym->getValue();
-#endif
     return LLVMErrorSuccess;
 }
 

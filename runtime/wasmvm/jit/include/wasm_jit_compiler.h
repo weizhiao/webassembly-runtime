@@ -1,5 +1,5 @@
-#ifndef _wasm_jit_COMPILER_H
-#define _wasm_jit_COMPILER_H
+#ifndef _WASM_JIT_COMPILER_H
+#define _WASM_JIT_COMPILER_H
 
 #include "wasm_jit.h"
 #include "wasm_jit_llvm.h"
@@ -15,33 +15,12 @@ typedef enum IntArithmetic
     INT_REM_U
 } IntArithmetic;
 
-typedef enum V128Arithmetic
-{
-    V128_ADD = 0,
-    V128_SUB,
-    V128_MUL,
-    V128_DIV,
-    V128_NEG,
-    V128_MIN,
-    V128_MAX,
-} V128Arithmetic;
-
 typedef enum IntBitwise
 {
     INT_AND = 0,
     INT_OR,
     INT_XOR,
 } IntBitwise;
-
-typedef enum V128Bitwise
-{
-    V128_NOT,
-    V128_AND,
-    V128_ANDNOT,
-    V128_OR,
-    V128_XOR,
-    V128_BITSELECT,
-} V128Bitwise;
 
 typedef enum IntShift
 {
@@ -72,34 +51,6 @@ typedef enum FloatArithmetic
     FLOAT_MIN,
     FLOAT_MAX,
 } FloatArithmetic;
-
-static inline bool
-check_type_compatible(uint8 src_type, uint8 dst_type)
-{
-    if (src_type == dst_type)
-    {
-        return true;
-    }
-
-    /* ext i1 to i32 */
-    if (src_type == VALUE_TYPE_I1 && dst_type == VALUE_TYPE_I32)
-    {
-        return true;
-    }
-
-    /* i32 <==> func.ref, i32 <==> extern.ref */
-    if (src_type == VALUE_TYPE_I32 && (dst_type == VALUE_TYPE_EXTERNREF || dst_type == VALUE_TYPE_FUNCREF))
-    {
-        return true;
-    }
-
-    if (dst_type == VALUE_TYPE_I32 && (src_type == VALUE_TYPE_FUNCREF || src_type == VALUE_TYPE_EXTERNREF))
-    {
-        return true;
-    }
-
-    return false;
-}
 
 #define DROP() func_ctx->value_stack--
 
@@ -183,8 +134,6 @@ check_type_compatible(uint8 src_type, uint8 dst_type)
 #define INT64_PTR_TYPE comp_ctx->basic_types.int64_ptr_type
 #define F32_PTR_TYPE comp_ctx->basic_types.float32_ptr_type
 #define F64_PTR_TYPE comp_ctx->basic_types.float64_ptr_type
-#define FUNC_REF_TYPE comp_ctx->basic_types.funcref_type
-#define EXTERN_REF_TYPE comp_ctx->basic_types.externref_type
 
 #define I32_CONST(v) LLVMConstInt(I32_TYPE, v, true)
 #define I64_CONST(v) LLVMConstInt(I64_TYPE, v, true)
@@ -217,35 +166,6 @@ check_type_compatible(uint8 src_type, uint8 dst_type)
 #define I64_64 LLVM_CONST(i64_64)
 #define REF_NULL I32_NEG_ONE
 
-#define V128_TYPE comp_ctx->basic_types.v128_type
-#define V128_PTR_TYPE comp_ctx->basic_types.v128_ptr_type
-#define V128_i8x16_TYPE comp_ctx->basic_types.i8x16_vec_type
-#define V128_i16x8_TYPE comp_ctx->basic_types.i16x8_vec_type
-#define V128_i32x4_TYPE comp_ctx->basic_types.i32x4_vec_type
-#define V128_i64x2_TYPE comp_ctx->basic_types.i64x2_vec_type
-#define V128_f32x4_TYPE comp_ctx->basic_types.f32x4_vec_type
-#define V128_f64x2_TYPE comp_ctx->basic_types.f64x2_vec_type
-
-#define V128_i8x16_ZERO LLVM_CONST(i8x16_vec_zero)
-#define V128_i16x8_ZERO LLVM_CONST(i16x8_vec_zero)
-#define V128_i32x4_ZERO LLVM_CONST(i32x4_vec_zero)
-#define V128_i64x2_ZERO LLVM_CONST(i64x2_vec_zero)
-#define V128_f32x4_ZERO LLVM_CONST(f32x4_vec_zero)
-#define V128_f64x2_ZERO LLVM_CONST(f64x2_vec_zero)
-
-#define TO_V128_i8x16(v) \
-    LLVMBuildBitCast(comp_ctx->builder, v, V128_i8x16_TYPE, "i8x16_val")
-#define TO_V128_i16x8(v) \
-    LLVMBuildBitCast(comp_ctx->builder, v, V128_i16x8_TYPE, "i16x8_val")
-#define TO_V128_i32x4(v) \
-    LLVMBuildBitCast(comp_ctx->builder, v, V128_i32x4_TYPE, "i32x4_val")
-#define TO_V128_i64x2(v) \
-    LLVMBuildBitCast(comp_ctx->builder, v, V128_i64x2_TYPE, "i64x2_val")
-#define TO_V128_f32x4(v) \
-    LLVMBuildBitCast(comp_ctx->builder, v, V128_f32x4_TYPE, "f32x4_val")
-#define TO_V128_f64x2(v) \
-    LLVMBuildBitCast(comp_ctx->builder, v, V128_f64x2_TYPE, "f64x2_val")
-
 #define CHECK_LLVM_CONST(v)                                       \
     do                                                            \
     {                                                             \
@@ -256,7 +176,7 @@ check_type_compatible(uint8 src_type, uint8 dst_type)
         }                                                         \
     } while (0)
 
-#define GET_wasm_jit_FUNCTION(name, argc)                                                                       \
+#define GET_WASM_JIT_FUNCTION(name, argc)                                                                       \
     do                                                                                                          \
     {                                                                                                           \
         if (!(func_type =                                                                                       \
@@ -281,7 +201,7 @@ check_type_compatible(uint8 src_type, uint8 dst_type)
 
 bool wasm_jit_emit_llvm_file(JITCompContext *comp_ctx, const char *file_name);
 
-bool wasm_jit_emit_wasm_jit_file(JITCompContext *comp_ctx, WASMModule *wasm_module,
+bool wasm_jit_emit_WASM_JIT_file(JITCompContext *comp_ctx, WASMModule *wasm_module,
                                  const char *file_name);
 
-#endif /* end of _wasm_jit_COMPILER_H_ */
+#endif /* end of _WASM_JIT_COMPILER_H_ */

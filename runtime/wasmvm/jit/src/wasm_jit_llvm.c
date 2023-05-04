@@ -1,7 +1,6 @@
 #include "wasm_jit_llvm.h"
 #include "wasm_jit_compiler.h"
 #include "wasm_jit_emit_exception.h"
-#include "wasm_jit_intrinsic.h"
 #include "runtime_log.h"
 
 LLVMTypeRef
@@ -10,8 +9,6 @@ wasm_type_to_llvm_type(JITLLVMTypes *llvm_types, uint8 wasm_type)
     switch (wasm_type)
     {
     case VALUE_TYPE_I32:
-    case VALUE_TYPE_FUNCREF:
-    case VALUE_TYPE_EXTERNREF:
         return llvm_types->int32_type;
     case VALUE_TYPE_I64:
         return llvm_types->int64_type;
@@ -19,8 +16,6 @@ wasm_type_to_llvm_type(JITLLVMTypes *llvm_types, uint8 wasm_type)
         return llvm_types->float32_type;
     case VALUE_TYPE_F64:
         return llvm_types->float64_type;
-    case VALUE_TYPE_V128:
-        return llvm_types->i64x2_vec_type;
     case VALUE_TYPE_VOID:
         return llvm_types->void_type;
     default:
@@ -38,14 +33,13 @@ wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
                        LLVMTypeRef *p_func_type)
 {
     LLVMValueRef func = NULL;
-    LLVMTypeRef ret_type, llvm_func_type;
+    LLVMTypeRef llvm_func_type;
     LLVMValueRef local_value;
     LLVMTypeRef func_type_wrapper;
     LLVMValueRef func_wrapper;
     LLVMBasicBlockRef func_begin;
     char func_name[48];
-    uint64 size;
-    uint32 i, j = 0, param_count;
+    uint32 j = 0;
     uint32 backend_thread_num, compile_thread_num;
 
     llvm_func_type = comp_ctx->jit_func_types[type_index].llvm_func_type;
@@ -218,13 +212,6 @@ create_local_variables(JITCompContext *comp_ctx,
             break;
         case VALUE_TYPE_F64:
             local_value = F64_ZERO;
-            break;
-        case VALUE_TYPE_V128:
-            local_value = V128_i64x2_ZERO;
-            break;
-        case VALUE_TYPE_FUNCREF:
-        case VALUE_TYPE_EXTERNREF:
-            local_value = REF_NULL;
             break;
         default:
             break;
@@ -508,9 +495,6 @@ wasm_jit_destroy_func_contexts(JITFuncContext **func_ctxes, uint32 count)
     wasm_runtime_free(func_ctxes);
 }
 
-/**
- * Create function compiler contexts
- */
 static JITFuncContext **
 wasm_jit_create_func_contexts(WASMModule *wasm_module, JITCompContext *comp_ctx)
 {
@@ -524,7 +508,7 @@ wasm_jit_create_func_contexts(WASMModule *wasm_module, JITCompContext *comp_ctx)
 
     /* Allocate memory */
     size = sizeof(JITFuncContext *) * (uint64)define_function_count;
-    if (size >= UINT32_MAX || !(func_ctxes = wasm_runtime_malloc(size)))
+    if (!(func_ctxes = wasm_runtime_malloc(size)))
     {
         wasm_jit_set_last_error("allocate memory failed.");
         return NULL;
@@ -564,36 +548,15 @@ set_llvm_basic_types(JITLLVMTypes *basic_types, LLVMContextRef context)
 
     basic_types->int8_ptr_type = LLVMPointerType(basic_types->int8_type, 0);
 
-    if (basic_types->int8_ptr_type)
-    {
-        basic_types->int8_pptr_type =
-            LLVMPointerType(basic_types->int8_ptr_type, 0);
-    }
+    basic_types->int8_pptr_type = LLVMPointerType(basic_types->int8_ptr_type, 0);
 
     basic_types->int16_ptr_type = LLVMPointerType(basic_types->int16_type, 0);
     basic_types->int32_ptr_type = LLVMPointerType(basic_types->int32_type, 0);
     basic_types->int64_ptr_type = LLVMPointerType(basic_types->int64_type, 0);
-    basic_types->float32_ptr_type =
-        LLVMPointerType(basic_types->float32_type, 0);
-    basic_types->float64_ptr_type =
-        LLVMPointerType(basic_types->float64_type, 0);
+    basic_types->float32_ptr_type = LLVMPointerType(basic_types->float32_type, 0);
+    basic_types->float64_ptr_type = LLVMPointerType(basic_types->float64_type, 0);
 
-    basic_types->i8x16_vec_type = LLVMVectorType(basic_types->int8_type, 16);
-    basic_types->i16x8_vec_type = LLVMVectorType(basic_types->int16_type, 8);
-    basic_types->i32x4_vec_type = LLVMVectorType(basic_types->int32_type, 4);
-    basic_types->i64x2_vec_type = LLVMVectorType(basic_types->int64_type, 2);
-    basic_types->f32x4_vec_type = LLVMVectorType(basic_types->float32_type, 4);
-    basic_types->f64x2_vec_type = LLVMVectorType(basic_types->float64_type, 2);
-
-    basic_types->v128_type = basic_types->i64x2_vec_type;
-    basic_types->v128_ptr_type = LLVMPointerType(basic_types->v128_type, 0);
-
-    basic_types->i1x2_vec_type = LLVMVectorType(basic_types->int1_type, 2);
-
-    basic_types->funcref_type = LLVMInt32TypeInContext(context);
-    basic_types->externref_type = LLVMInt32TypeInContext(context);
-
-    return (basic_types->int8_ptr_type && basic_types->int8_pptr_type && basic_types->int16_ptr_type && basic_types->int32_ptr_type && basic_types->int64_ptr_type && basic_types->float32_ptr_type && basic_types->float64_ptr_type && basic_types->i8x16_vec_type && basic_types->i16x8_vec_type && basic_types->i32x4_vec_type && basic_types->i64x2_vec_type && basic_types->f32x4_vec_type && basic_types->f64x2_vec_type && basic_types->i1x2_vec_type && basic_types->meta_data_type && basic_types->funcref_type && basic_types->externref_type)
+    return (basic_types->int8_ptr_type && basic_types->int8_pptr_type && basic_types->int16_ptr_type && basic_types->int32_ptr_type && basic_types->int64_ptr_type && basic_types->float32_ptr_type && basic_types->float64_ptr_type && basic_types->meta_data_type)
                ? true
                : false;
 }
@@ -717,18 +680,6 @@ create_llvm_consts(JITLLVMConsts *consts, JITCompContext *comp_ctx)
     CREATE_I32_CONST(one, 1)
     CREATE_I32_CONST(two, 2)
     CREATE_I32_CONST(three, 3)
-    CREATE_I32_CONST(four, 4)
-    CREATE_I32_CONST(five, 5)
-    CREATE_I32_CONST(six, 6)
-    CREATE_I32_CONST(seven, 7)
-    CREATE_I32_CONST(eight, 8)
-    CREATE_I32_CONST(nine, 9)
-    CREATE_I32_CONST(ten, 10)
-    CREATE_I32_CONST(eleven, 11)
-    CREATE_I32_CONST(twelve, 12)
-    CREATE_I32_CONST(thirteen, 13)
-    CREATE_I32_CONST(fourteen, 14)
-    CREATE_I32_CONST(fifteen, 15)
     CREATE_I32_CONST(31, 31)
     CREATE_I32_CONST(32, 32)
 #undef CREATE_I32_CONST
@@ -743,33 +694,6 @@ create_llvm_consts(JITLLVMConsts *consts, JITCompContext *comp_ctx)
     CREATE_I64_CONST(63, 63)
     CREATE_I64_CONST(64, 64)
 #undef CREATE_I64_CONST
-
-#define CREATE_V128_CONST(name, type)                     \
-    if (!(consts->name##_vec_zero = LLVMConstNull(type))) \
-        return false;                                     \
-    if (!(consts->name##_undef = LLVMGetUndef(type)))     \
-        return false;
-
-    CREATE_V128_CONST(i8x16, V128_i8x16_TYPE)
-    CREATE_V128_CONST(i16x8, V128_i16x8_TYPE)
-    CREATE_V128_CONST(i32x4, V128_i32x4_TYPE)
-    CREATE_V128_CONST(i64x2, V128_i64x2_TYPE)
-    CREATE_V128_CONST(f32x4, V128_f32x4_TYPE)
-    CREATE_V128_CONST(f64x2, V128_f64x2_TYPE)
-#undef CREATE_V128_CONST
-
-#define CREATE_VEC_ZERO_MASK(slot)                                       \
-    {                                                                    \
-        LLVMTypeRef type = LLVMVectorType(I32_TYPE, slot);               \
-        if (!type || !(consts->i32x##slot##_zero = LLVMConstNull(type))) \
-            return false;                                                \
-    }
-
-    CREATE_VEC_ZERO_MASK(16)
-    CREATE_VEC_ZERO_MASK(8)
-    CREATE_VEC_ZERO_MASK(4)
-    CREATE_VEC_ZERO_MASK(2)
-#undef CREATE_VEC_ZERO_MASK
 
     return true;
 }
@@ -988,8 +912,6 @@ wasm_jit_create_comp_context(WASMModule *wasm_module)
         goto fail;
     }
 
-    comp_ctx->enable_bulk_memory = true;
-
     comp_ctx->opt_level = 3;
     comp_ctx->size_level = 3;
 
@@ -1001,35 +923,13 @@ wasm_jit_create_comp_context(WASMModule *wasm_module)
     if (!orc_jit_create(comp_ctx))
         goto fail;
 
-#ifndef OS_ENABLE_HW_BOUND_CHECK
-    comp_ctx->enable_bound_check = true;
-    /* Always enable stack boundary check if `bounds-checks`
-       is enabled */
-#else
-    comp_ctx->enable_bound_check = false;
-    /* When `bounds-checks` is disabled, we set stack boundary
-       check status according to the compilation option */
-#if WASM_DISABLE_STACK_HW_BOUND_CHECK != 0
-    /* Native stack overflow check with hardware trap is disabled,
-       we need to enable the check by LLVM JITed/AOTed code */
-    comp_ctx->enable_stack_bound_check = true;
-#else
-    /* Native stack overflow check with hardware trap is enabled,
-       no need to enable the check by LLVM JITed/AOTed code */
-    comp_ctx->enable_stack_bound_check = false;
-#endif
-#endif
-
     if (!(target_data_ref =
               LLVMCreateTargetDataLayout(comp_ctx->target_machine)))
     {
         wasm_jit_set_last_error("create LLVM target data layout failed.");
         goto fail;
     }
-    comp_ctx->pointer_size = LLVMPointerSize(target_data_ref);
     LLVMDisposeTargetData(target_data_ref);
-
-    comp_ctx->optimize = true;
 
     /* Create metadata for llvm float experimental constrained intrinsics */
     if (!(comp_ctx->fp_rounding_mode = LLVMMDStringInContext(
@@ -1145,14 +1045,6 @@ bool wasm_jit_build_zero_function_ret(JITCompContext *comp_ctx, JITFuncContext *
         case VALUE_TYPE_F64:
             ret = LLVMBuildRet(comp_ctx->builder, F64_ZERO);
             break;
-        case VALUE_TYPE_V128:
-            ret =
-                LLVMBuildRet(comp_ctx->builder, LLVM_CONST(i64x2_vec_zero));
-            break;
-        case VALUE_TYPE_FUNCREF:
-        case VALUE_TYPE_EXTERNREF:
-            ret = LLVMBuildRet(comp_ctx->builder, REF_NULL);
-            break;
         default:;
         }
     }
@@ -1196,10 +1088,8 @@ __call_llvm_intrinsic(const JITCompContext *comp_ctx,
         }
     }
 
-#if LLVM_VERSION_MAJOR >= 14
     func_type =
         LLVMFunctionType(ret_type, param_types, (uint32)param_count, false);
-#endif
 
     /* Call the LLVM intrinsic function */
     if (!(ret = LLVMBuildCall2(comp_ctx->builder, func_type, func, param_values,
@@ -1257,7 +1147,7 @@ wasm_jit_call_llvm_intrinsic_v(const JITCompContext *comp_ctx,
 
     /* Create param values */
     total_size = sizeof(LLVMValueRef) * (uint64)param_count;
-    if (total_size >= UINT32_MAX || !(param_values = wasm_runtime_malloc((uint32)total_size)))
+    if (!(param_values = wasm_runtime_malloc((uint32)total_size)))
     {
         wasm_jit_set_last_error("allocate memory for param values failed.");
         return false;
@@ -1273,42 +1163,4 @@ wasm_jit_call_llvm_intrinsic_v(const JITCompContext *comp_ctx,
     wasm_runtime_free(param_values);
 
     return ret;
-}
-
-LLVMValueRef
-wasm_jit_get_func_from_table(const JITCompContext *comp_ctx, LLVMValueRef base,
-                             LLVMTypeRef func_type, int32 index)
-{
-    LLVMValueRef func;
-    LLVMBuilderRef builder = comp_ctx->builder;
-    LLVMValueRef func_addr;
-
-    if (!(func_addr = I32_CONST(index)))
-    {
-        wasm_jit_set_last_error("construct function index failed.");
-        goto fail;
-    }
-
-    LLVMBuildGEP(func_addr, OPQ_PTR_TYPE, base,
-                 func_addr, "func_addr");
-
-    func =
-        LLVMBuildLoad2(comp_ctx->builder, OPQ_PTR_TYPE, func_addr, "func_tmp");
-
-    if (func == NULL)
-    {
-        wasm_jit_set_last_error("get function pointer failed.");
-        goto fail;
-    }
-
-    if (!(func =
-              LLVMBuildBitCast(comp_ctx->builder, func, func_type, "func")))
-    {
-        wasm_jit_set_last_error("cast function fialed.");
-        goto fail;
-    }
-
-    return func;
-fail:
-    return NULL;
 }

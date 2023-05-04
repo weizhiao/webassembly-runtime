@@ -169,7 +169,6 @@ orcjit_thread_callback(void *arg)
 bool compile_jit_functions(WASMModule *module)
 {
     uint32 thread_num = WASM_ORC_JIT_BACKEND_THREAD_NUM;
-    uint32 import_func_count = module->import_function_count;
     uint32 define_function_count = module->function_count - module->import_function_count;
     uint32 i, j;
 

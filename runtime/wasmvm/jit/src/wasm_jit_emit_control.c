@@ -5,7 +5,7 @@ static char *block_name_prefix[] = {"block", "loop", "if"};
 static char *block_name_suffix[] = {"begin", "else", "end"};
 static uint32 block_indexes[3] = {0};
 
-static void inline destory_jit_block(JITBlock *block)
+static inline void destory_jit_block(JITBlock *block)
 {
     if (block->param_phis)
         wasm_runtime_free(block->param_phis);
@@ -54,13 +54,12 @@ static void inline destory_jit_block(JITBlock *block)
         }                                     \
     } while (0)
 
-/* clang-format off */
-enum {
+enum
+{
     LABEL_BEGIN = 0,
     LABEL_ELSE,
     LABEL_END
 };
-/* clang-format on */
 
 static inline void
 format_block_name(char *name, uint32 name_size, uint32 block_index,

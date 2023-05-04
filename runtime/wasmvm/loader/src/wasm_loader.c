@@ -3,7 +3,7 @@
 
 bool wasm_loader(WASMModule *module, uint8 *buf, uint32 size)
 {
-    uint32 magic_number, version, payload_len = 0, name_len = 0;
+    uint32 magic_number, version, payload_len = 0;
     const uint8 *p = buf, *p_end = p + size;
     const uint8 *section_data_start, *section_data_end;
     uint8 id;
@@ -129,10 +129,8 @@ bool wasm_loader(WASMModule *module, uint8 *buf, uint32 size)
             }
             break;
 
-#if WASM_ENABLE_BULK_MEMORY != 0
         case SECTION_TYPE_DATACOUNT:
             break;
-#endif
 
         default:
             break;

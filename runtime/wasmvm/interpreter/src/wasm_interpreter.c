@@ -696,7 +696,6 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
 {
     WASMModule *module = exec_env->module_inst;
     WASMFunction *func_import = module->functions + func_idx;
-    uint32 argv_ret[2];
     bool ret = false;
 
     switch (func_import->func_kind)
@@ -1011,10 +1010,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 {
                 case VALUE_TYPE_I32:
                 case VALUE_TYPE_F32:
-#if WASM_ENABLE_REF_TYPES != 0
-                case VALUE_TYPE_FUNCREF:
-                case VALUE_TYPE_EXTERNREF:
-#endif
                     PUSH_I32(GET_I32_FROM_ADDR(frame_lp + local_offset));
                     break;
                 case VALUE_TYPE_I64:
@@ -1048,10 +1043,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 {
                 case VALUE_TYPE_I32:
                 case VALUE_TYPE_F32:
-#if WASM_ENABLE_REF_TYPES != 0
-                case VALUE_TYPE_FUNCREF:
-                case VALUE_TYPE_EXTERNREF:
-#endif
                     PUT_I32_TO_ADDR(frame_lp + local_offset, POP_I32());
                     break;
                 case VALUE_TYPE_I64:
@@ -1086,10 +1077,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 {
                 case VALUE_TYPE_I32:
                 case VALUE_TYPE_F32:
-#if WASM_ENABLE_REF_TYPES != 0
-                case VALUE_TYPE_FUNCREF:
-                case VALUE_TYPE_EXTERNREF:
-#endif
                     PUT_I32_TO_ADDR(frame_lp + local_offset, GET_I32_FROM_ADDR(frame_sp - 1));
                     break;
                 case VALUE_TYPE_I64:

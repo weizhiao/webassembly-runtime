@@ -2,6 +2,8 @@
 #include "wasm_memory.h"
 #include "wasm_exception.h"
 
+static FILE *call_info;
+
 static NativeSymbolsList g_native_symbols_list = NULL;
 
 typedef void (*GenericFunctionPointer)();
@@ -134,6 +136,40 @@ static volatile VoidFuncPtr invokeNative_Void =
 uint32
 get_libc_wasi_export_apis(NativeSymbol **p_libc_wasi_apis);
 
+// void print_call_and_params(uint32 func_idx, WASMType *wasm_type, uint32 *argv)
+// {
+//     call_info = fopen("call_info.log", "a");
+//     uint32 param_count = wasm_type->param_count;
+//     uint8 *param = wasm_type->param;
+//     fprintf(call_info, "\n");
+//     fprintf(call_info, "func:%d\n", func_idx);
+//     for (int i = 0; i < param_count; i++, param++)
+//     {
+//         switch (*param)
+//         {
+//         case VALUE_TYPE_I32:
+//             fprintf(call_info, "param%d:%d\n", i,
+//                     (int32)(*((int32 *)argv)));
+//             argv++;
+//             break;
+//         case VALUE_TYPE_I64:
+//             fprintf(call_info, "param%d:%ld\n", i,
+//                     (int64)(*((int64 *)argv)));
+//             argv += 2;
+//             break;
+//         case VALUE_TYPE_F32:
+//             fprintf(call_info, "param%d:%f\n", i, (float32)(*argv));
+//             argv++;
+//             break;
+//         case VALUE_TYPE_F64:
+//             fprintf(call_info, "param%d:%lf\n", i, (float64)(*argv));
+//             argv += 2;
+//             break;
+//         }
+//     }
+//     fclose(call_info);
+// }
+
 bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, uint32 func_idx, uint32 *argv,
                                 uint32 *argv_ret)
 {
@@ -149,6 +185,8 @@ bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, uint32 func_idx, uint32 *
     void *func_ptr;
     uint32 arg_i32;
     uint64 arg_i64;
+
+    // print_call_and_params(func_idx, func->func_type, argv);
 
     argc1 = 1 + param_count + ext_ret_count;
     if (argc1 > sizeof(argv_buf) / sizeof(uint64))
@@ -238,6 +276,17 @@ bool wasm_runtime_invoke_native(WASMExecEnv *exec_env, uint32 func_idx, uint32 *
             break;
         }
     }
+
+    // if (func->ret_cell_num == 1)
+    // {
+    //     printf("func%d:%d\n", func_idx, *argv_ret);
+    // }
+    // else if (func->ret_cell_num == 2)
+    // {
+    //     printf("func%d:%ld\n", func_idx, *((uint64 *)argv_ret));
+    // }
+
+    // print_call_results(func_idx, func->func_type, argv_ret);
 
     ret = !wasm_get_exception(module) ? true : false;
 

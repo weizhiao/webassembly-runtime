@@ -238,7 +238,7 @@ typedef struct WASMGlobal
 typedef struct WASMBlock
 {
     struct WASMBlock *next_block;
-    struct WASMBLOCK *pre_block;
+    struct WASMBlock *pre_block;
     uint8 *end_addr;
     uint8 *else_addr;
     uint32 stack_num;
@@ -475,11 +475,7 @@ wasm_get_cell_num(const uint8 *types, uint32 type_count)
 static inline bool
 is_value_type(uint8 type)
 {
-    if (type == VALUE_TYPE_I32 || type == VALUE_TYPE_I64 || type == VALUE_TYPE_F32 || type == VALUE_TYPE_F64
-#if WASM_ENABLE_REF_TYPES != 0
-        || type == VALUE_TYPE_FUNCREF || type == VALUE_TYPE_EXTERNREF
-#endif
-    )
+    if (type == VALUE_TYPE_I32 || type == VALUE_TYPE_I64 || type == VALUE_TYPE_F32 || type == VALUE_TYPE_F64)
         return true;
     return false;
 }

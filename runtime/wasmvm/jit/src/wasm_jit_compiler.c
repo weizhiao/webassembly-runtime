@@ -6,7 +6,6 @@
 #include "wasm_jit_emit_numberic.h"
 #include "wasm_jit_emit_control.h"
 #include "wasm_jit_emit_function.h"
-#include "wasm_jit_emit_table.h"
 #include "wasm_fast_readleb.h"
 #include "wasm_opcode.h"
 #include <errno.h>
@@ -107,7 +106,6 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
     LLVMValueRef llvm_offset, llvm_cond;
     LLVMValueRef llvm_ptr;
     LLVMTypeRef llvm_ptr_type;
-    JITValue *wasm_jit_value_top;
     bool sign = true;
     int32 i32_const;
     int64 i64_const;
@@ -835,18 +833,6 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             read_leb_uint32(frame_ip, frame_ip_end, opcode1);
             opcode = (uint32)opcode1;
 
-            if (WASM_OP_MEMORY_INIT <= opcode && opcode <= WASM_OP_MEMORY_FILL && !comp_ctx->enable_bulk_memory)
-            {
-                goto unsupport_bulk_memory;
-            }
-
-#if WASM_ENABLE_REF_TYPES != 0
-            if (WASM_OP_TABLE_INIT <= opcode && opcode <= WASM_OP_TABLE_FILL && !comp_ctx->enable_ref_types)
-            {
-                goto unsupport_ref_types;
-            }
-#endif
-
             switch (opcode)
             {
             case WASM_OP_I32_TRUNC_SAT_S_F32:
@@ -914,71 +900,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
                     return false;
                 break;
             }
-#if WASM_ENABLE_REF_TYPES != 0
-            case WASM_OP_TABLE_INIT:
-            {
-                uint32 tbl_idx, tbl_seg_idx;
 
-                read_leb_uint32(frame_ip, frame_ip_end, tbl_seg_idx);
-                read_leb_uint32(frame_ip, frame_ip_end, tbl_idx);
-                if (!wasm_jit_compile_op_table_init(comp_ctx, func_ctx,
-                                                    tbl_idx, tbl_seg_idx))
-                    return false;
-                break;
-            }
-            case WASM_OP_ELEM_DROP:
-            {
-                uint32 tbl_seg_idx;
-
-                read_leb_uint32(frame_ip, frame_ip_end, tbl_seg_idx);
-                if (!wasm_jit_compile_op_elem_drop(comp_ctx, func_ctx,
-                                                   tbl_seg_idx))
-                    return false;
-                break;
-            }
-            case WASM_OP_TABLE_COPY:
-            {
-                uint32 src_tbl_idx, dst_tbl_idx;
-
-                read_leb_uint32(frame_ip, frame_ip_end, dst_tbl_idx);
-                read_leb_uint32(frame_ip, frame_ip_end, src_tbl_idx);
-                if (!wasm_jit_compile_op_table_copy(
-                        comp_ctx, func_ctx, src_tbl_idx, dst_tbl_idx))
-                    return false;
-                break;
-            }
-            case WASM_OP_TABLE_GROW:
-            {
-                uint32 tbl_idx;
-
-                read_leb_uint32(frame_ip, frame_ip_end, tbl_idx);
-                if (!wasm_jit_compile_op_table_grow(comp_ctx, func_ctx,
-                                                    tbl_idx))
-                    return false;
-                break;
-            }
-
-            case WASM_OP_TABLE_SIZE:
-            {
-                uint32 tbl_idx;
-
-                read_leb_uint32(frame_ip, frame_ip_end, tbl_idx);
-                if (!wasm_jit_compile_op_table_size(comp_ctx, func_ctx,
-                                                    tbl_idx))
-                    return false;
-                break;
-            }
-            case WASM_OP_TABLE_FILL:
-            {
-                uint32 tbl_idx;
-
-                read_leb_uint32(frame_ip, frame_ip_end, tbl_idx);
-                if (!wasm_jit_compile_op_table_fill(comp_ctx, func_ctx,
-                                                    tbl_idx))
-                    return false;
-                break;
-            }
-#endif /* WASM_ENABLE_REF_TYPES */
             default:
                 wasm_jit_set_last_error("unsupported opcode");
                 return false;
@@ -1007,28 +929,11 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
         if (last_block != func_ctx->got_exception_block)
             LLVMMoveBasicBlockAfter(func_ctx->got_exception_block, last_block);
     }
+
+    wasm_runtime_free(func_ctx->block_stack_bottom);
+    wasm_runtime_free(func_ctx->value_stack_bottom);
+
     return true;
-
-#if WASM_ENABLE_SIMD != 0
-unsupport_simd:
-    wasm_jit_set_last_error("SIMD instruction was found, "
-                            "try removing --disable-simd option");
-    return false;
-#endif
-
-#if WASM_ENABLE_REF_TYPES != 0
-unsupport_ref_types:
-    wasm_jit_set_last_error("reference type instruction was found, "
-                            "try removing --disable-ref-types option");
-    return false;
-#endif
-
-#if WASM_ENABLE_BULK_MEMORY != 0
-unsupport_bulk_memory:
-    wasm_jit_set_last_error("bulk memory instruction was found, "
-                            "try removing --disable-bulk-memory option");
-    return false;
-#endif
 
 fail:
     return false;

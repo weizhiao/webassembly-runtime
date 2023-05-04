@@ -1,7 +1,6 @@
 #include "wasm_jit_emit_conversion.h"
 #include "wasm_jit_emit_exception.h"
 #include "wasm_jit_emit_numberic.h"
-#include "wasm_jit_intrinsic.h"
 
 static LLVMValueRef
 call_fcmp_intrinsic(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
@@ -10,28 +9,9 @@ call_fcmp_intrinsic(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                     const char *name)
 {
     LLVMValueRef res = NULL;
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(
-                                                 comp_ctx, src_type == F32_TYPE ? "f32_cmp" : "f64_cmp"))
-    {
-        LLVMTypeRef param_types[3];
-        LLVMValueRef opcond = LLVMConstInt(I32_TYPE, cond, true);
-        param_types[0] = I32_TYPE;
-        param_types[1] = src_type;
-        param_types[2] = src_type;
-        res = wasm_jit_call_llvm_intrinsic(
-            comp_ctx, func_ctx, src_type == F32_TYPE ? "f32_cmp" : "f64_cmp",
-            I32_TYPE, param_types, 3, opcond, lhs, rhs);
-        if (!res)
-        {
-            goto fail;
-        }
-        res = LLVMBuildIntCast(comp_ctx->builder, res, INT1_TYPE, "bit_cast");
-    }
-    else
-    {
-        res = LLVMBuildFCmp(comp_ctx->builder, op, lhs, rhs, name);
-    }
-fail:
+
+    res = LLVMBuildFCmp(comp_ctx->builder, op, lhs, rhs, name);
+
     return res;
 }
 
@@ -110,20 +90,10 @@ trunc_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
                                   res, check_overflow_succ)))
         goto fail;
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, name))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = src_type;
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, name, dest_type,
-                                           param_types, 1, operand);
-    }
+    if (sign)
+        res = LLVMBuildFPToSI(comp_ctx->builder, operand, dest_type, name);
     else
-    {
-        if (sign)
-            res = LLVMBuildFPToSI(comp_ctx->builder, operand, dest_type, name);
-        else
-            res = LLVMBuildFPToUI(comp_ctx->builder, operand, dest_type, name);
-    }
+        res = LLVMBuildFPToUI(comp_ctx->builder, operand, dest_type, name);
 
     if (!res)
     {
@@ -247,42 +217,24 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     /* Start to translate check_greater_succ block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, check_greater_succ);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, name))
+    char intrinsic[128];
+
+    /* Integer width is always 32 or 64 here. */
+
+    snprintf(intrinsic, sizeof(intrinsic), "i%d_trunc_f%d_%c",
+             LLVMGetIntTypeWidth(dest_type),
+             LLVMGetTypeKind(src_type) == LLVMFloatTypeKind ? 32 : 64,
+             sign ? 's' : 'u');
+
+    if (sign)
     {
-        LLVMTypeRef param_types[1];
-        param_types[0] = src_type;
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, name, dest_type,
-                                           param_types, 1, operand);
+        res = LLVMBuildFPToSI(comp_ctx->builder, operand, dest_type,
+                              name);
     }
     else
     {
-        char intrinsic[128];
-
-        /* Integer width is always 32 or 64 here. */
-
-        snprintf(intrinsic, sizeof(intrinsic), "i%d_trunc_f%d_%c",
-                 LLVMGetIntTypeWidth(dest_type),
-                 LLVMGetTypeKind(src_type) == LLVMFloatTypeKind ? 32 : 64,
-                 sign ? 's' : 'u');
-
-        if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, intrinsic))
-        {
-            res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, intrinsic,
-                                               dest_type, &src_type, 1, operand);
-        }
-        else
-        {
-            if (sign)
-            {
-                res = LLVMBuildFPToSI(comp_ctx->builder, operand, dest_type,
-                                      name);
-            }
-            else
-            {
-                res = LLVMBuildFPToUI(comp_ctx->builder, operand, dest_type,
-                                      name);
-            }
-        }
+        res = LLVMBuildFPToUI(comp_ctx->builder, operand, dest_type,
+                              name);
     }
 
     if (!res)
@@ -362,8 +314,6 @@ bool wasm_jit_compile_op_i32_wrap_i64(JITCompContext *comp_ctx, JITFuncContext *
 
     PUSH_I32(res);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_i32_trunc_f32(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
@@ -607,25 +557,13 @@ bool wasm_jit_compile_op_f32_convert_i32(JITCompContext *comp_ctx,
 
     POP_I32(value);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(
-                                                 comp_ctx, sign ? "f32_convert_i32_s" : "f32_convert_i32_u"))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = I32_TYPE;
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx,
-                                           sign ? "f32_convert_i32_s"
-                                                : "f32_convert_i32_u",
-                                           F32_TYPE, param_types, 1, value);
-    }
+    if (sign)
+        res = LLVMBuildSIToFP(comp_ctx->builder, value, F32_TYPE,
+                              "f32_convert_i32_s");
     else
-    {
-        if (sign)
-            res = LLVMBuildSIToFP(comp_ctx->builder, value, F32_TYPE,
-                                  "f32_convert_i32_s");
-        else
-            res = LLVMBuildUIToFP(comp_ctx->builder, value, F32_TYPE,
-                                  "f32_convert_i32_u");
-    }
+        res = LLVMBuildUIToFP(comp_ctx->builder, value, F32_TYPE,
+                              "f32_convert_i32_u");
+
     if (!res)
     {
         wasm_jit_set_last_error("llvm build conversion failed.");
@@ -634,8 +572,6 @@ bool wasm_jit_compile_op_f32_convert_i32(JITCompContext *comp_ctx,
 
     PUSH_F32(res);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f32_convert_i64(JITCompContext *comp_ctx,
@@ -645,25 +581,12 @@ bool wasm_jit_compile_op_f32_convert_i64(JITCompContext *comp_ctx,
 
     POP_I64(value);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(
-                                                 comp_ctx, sign ? "f32_convert_i64_s" : "f32_convert_i64_u"))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = I64_TYPE;
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx,
-                                           sign ? "f32_convert_i64_s"
-                                                : "f32_convert_i64_u",
-                                           F32_TYPE, param_types, 1, value);
-    }
+    if (sign)
+        res = LLVMBuildSIToFP(comp_ctx->builder, value, F32_TYPE,
+                              "f32_convert_i64_s");
     else
-    {
-        if (sign)
-            res = LLVMBuildSIToFP(comp_ctx->builder, value, F32_TYPE,
-                                  "f32_convert_i64_s");
-        else
-            res = LLVMBuildUIToFP(comp_ctx->builder, value, F32_TYPE,
-                                  "f32_convert_i64_u");
-    }
+        res = LLVMBuildUIToFP(comp_ctx->builder, value, F32_TYPE,
+                              "f32_convert_i64_u");
 
     if (!res)
     {
@@ -673,8 +596,6 @@ bool wasm_jit_compile_op_f32_convert_i64(JITCompContext *comp_ctx,
 
     PUSH_F32(res);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f32_demote_f64(JITCompContext *comp_ctx,
@@ -684,18 +605,8 @@ bool wasm_jit_compile_op_f32_demote_f64(JITCompContext *comp_ctx,
 
     POP_F64(value);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, "f32_demote_f64"))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = F64_TYPE;
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, "f32_demote_f64",
-                                           F32_TYPE, param_types, 1, value);
-    }
-    else
-    {
-        res = LLVMBuildFPTrunc(comp_ctx->builder, value, F32_TYPE,
-                               "f32_demote_f64");
-    }
+    res = LLVMBuildFPTrunc(comp_ctx->builder, value, F32_TYPE,
+                           "f32_demote_f64");
 
     if (!res)
     {
@@ -705,8 +616,6 @@ bool wasm_jit_compile_op_f32_demote_f64(JITCompContext *comp_ctx,
 
     PUSH_F32(res);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f64_convert_i32(JITCompContext *comp_ctx,
@@ -716,26 +625,12 @@ bool wasm_jit_compile_op_f64_convert_i32(JITCompContext *comp_ctx,
 
     POP_I32(value);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(
-                                                 comp_ctx, sign ? "f64_convert_i32_s" : "f64_convert_i32_u"))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = I32_TYPE;
-
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx,
-                                           sign ? "f64_convert_i32_s"
-                                                : "f64_convert_i32_u",
-                                           F64_TYPE, param_types, 1, value);
-    }
+    if (sign)
+        res = LLVMBuildSIToFP(comp_ctx->builder, value, F64_TYPE,
+                              "f64_convert_i32_s");
     else
-    {
-        if (sign)
-            res = LLVMBuildSIToFP(comp_ctx->builder, value, F64_TYPE,
-                                  "f64_convert_i32_s");
-        else
-            res = LLVMBuildUIToFP(comp_ctx->builder, value, F64_TYPE,
-                                  "f64_convert_i32_u");
-    }
+        res = LLVMBuildUIToFP(comp_ctx->builder, value, F64_TYPE,
+                              "f64_convert_i32_u");
 
     if (!res)
     {
@@ -745,8 +640,6 @@ bool wasm_jit_compile_op_f64_convert_i32(JITCompContext *comp_ctx,
 
     PUSH_F64(res);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f64_convert_i64(JITCompContext *comp_ctx,
@@ -756,26 +649,12 @@ bool wasm_jit_compile_op_f64_convert_i64(JITCompContext *comp_ctx,
 
     POP_I64(value);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(
-                                                 comp_ctx, sign ? "f64_convert_i64_s" : "f64_convert_i64_u"))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = I64_TYPE;
-
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx,
-                                           sign ? "f64_convert_i64_s"
-                                                : "f64_convert_i64_u",
-                                           F64_TYPE, param_types, 1, value);
-    }
+    if (sign)
+        res = LLVMBuildSIToFP(comp_ctx->builder, value, F64_TYPE,
+                              "f64_convert_i64_s");
     else
-    {
-        if (sign)
-            res = LLVMBuildSIToFP(comp_ctx->builder, value, F64_TYPE,
-                                  "f64_convert_i64_s");
-        else
-            res = LLVMBuildUIToFP(comp_ctx->builder, value, F64_TYPE,
-                                  "f64_convert_i64_u");
-    }
+        res = LLVMBuildUIToFP(comp_ctx->builder, value, F64_TYPE,
+                              "f64_convert_i64_u");
 
     if (!res)
     {
@@ -785,8 +664,6 @@ bool wasm_jit_compile_op_f64_convert_i64(JITCompContext *comp_ctx,
 
     PUSH_F64(res);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f64_promote_f32(JITCompContext *comp_ctx,
@@ -796,18 +673,8 @@ bool wasm_jit_compile_op_f64_promote_f32(JITCompContext *comp_ctx,
 
     POP_F32(value);
 
-    if (comp_ctx->disable_llvm_intrinsics && wasm_jit_intrinsic_check_capability(comp_ctx, "f64_promote_f32"))
-    {
-        LLVMTypeRef param_types[1];
-        param_types[0] = F32_TYPE;
-        res = wasm_jit_call_llvm_intrinsic(comp_ctx, func_ctx, "f64_promote_f32",
-                                           F64_TYPE, param_types, 1, value);
-    }
-    else
-    {
-        res = LLVMBuildFPExt(comp_ctx->builder, value, F64_TYPE,
-                             "f64_promote_f32");
-    }
+    res = LLVMBuildFPExt(comp_ctx->builder, value, F64_TYPE,
+                         "f64_promote_f32");
 
     if (!res)
     {
@@ -820,8 +687,6 @@ bool wasm_jit_compile_op_f64_promote_f32(JITCompContext *comp_ctx,
     /* Avoid the promote being optimized away */
     PUSH_F64(F64_CONST(1.0));
     return wasm_jit_compile_op_f64_arithmetic(comp_ctx, func_ctx, FLOAT_MUL);
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_i64_reinterpret_f64(JITCompContext *comp_ctx,
@@ -837,8 +702,6 @@ bool wasm_jit_compile_op_i64_reinterpret_f64(JITCompContext *comp_ctx,
     }
     PUSH_I64(value);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_i32_reinterpret_f32(JITCompContext *comp_ctx,
@@ -854,8 +717,6 @@ bool wasm_jit_compile_op_i32_reinterpret_f32(JITCompContext *comp_ctx,
     }
     PUSH_I32(value);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f64_reinterpret_i64(JITCompContext *comp_ctx,
@@ -871,8 +732,6 @@ bool wasm_jit_compile_op_f64_reinterpret_i64(JITCompContext *comp_ctx,
     }
     PUSH_F64(value);
     return true;
-fail:
-    return false;
 }
 
 bool wasm_jit_compile_op_f32_reinterpret_i32(JITCompContext *comp_ctx,
@@ -888,6 +747,4 @@ bool wasm_jit_compile_op_f32_reinterpret_i32(JITCompContext *comp_ctx,
     }
     PUSH_F32(value);
     return true;
-fail:
-    return false;
 }
