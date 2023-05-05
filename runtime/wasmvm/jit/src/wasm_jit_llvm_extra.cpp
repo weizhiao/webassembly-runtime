@@ -182,14 +182,11 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
 
     PassBuilder PB(TM, PTO);
 
-    /* Register all the basic analyses with the managers */
     LoopAnalysisManager LAM;
     FunctionAnalysisManager FAM;
     CGSCCAnalysisManager CGAM;
     ModuleAnalysisManager MAM;
 
-    /* Register the target library analysis directly and give it a
-       customized preset TLI */
     std::unique_ptr<TargetLibraryInfoImpl> TLII(
         new TargetLibraryInfoImpl(Triple(TM->getTargetTriple())));
     FAM.registerPass([&]
@@ -225,22 +222,12 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
         break;
     }
 
-    bool disable_llvm_lto = comp_ctx->disable_llvm_lto;
-
     Module *M = reinterpret_cast<Module *>(module);
-    if (disable_llvm_lto)
-    {
-        for (Function &F : *M)
-        {
-            F.addFnAttr("disable-tail-calls", "true");
-        }
-    }
 
     ModulePassManager MPM;
 
     const char *Passes =
         "mem2reg,instcombine,simplifycfg,jump-threading,indvars";
     ExitOnErr(PB.parsePassPipeline(MPM, Passes));
-
     MPM.run(*M, MAM);
 }

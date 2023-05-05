@@ -71,7 +71,7 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         }
 
         /* Call wasm_jit_set_exception_with_id() to throw exception */
-        param_types[0] = INT8_PTR_TYPE;
+        param_types[0] = INT8_TYPE_PTR;
         param_types[1] = I32_TYPE;
         ret_type = VOID_TYPE;
 

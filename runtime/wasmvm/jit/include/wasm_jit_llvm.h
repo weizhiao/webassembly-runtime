@@ -2,6 +2,8 @@
 #define _WASM_JIT_LLVM_H
 
 #include "wasm_jit.h"
+#include "wasm_memory.h"
+#include "wasm_type.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm-c/Types.h"
 #include "llvm-c/Target.h"
@@ -29,52 +31,12 @@ extern "C"
 #endif
 
 /* Opaque pointer type */
-#define OPQ_PTR_TYPE INT8_PTR_TYPE
-
-#ifndef NDEBUG
-#define DEBUG_PASS
-#define DUMP_MODULE
-#else
-#undef DEBUG_PASS
-#undef DUMP_MODULE
-#endif
-    typedef enum IntCond
-    {
-        INT_EQZ = 0,
-        INT_EQ,
-        INT_NE,
-        INT_LT_S,
-        INT_LT_U,
-        INT_GT_S,
-        INT_GT_U,
-        INT_LE_S,
-        INT_LE_U,
-        INT_GE_S,
-        INT_GE_U
-    } IntCond;
-
-    typedef enum FloatCond
-    {
-        FLOAT_EQ = 0,
-        FLOAT_NE,
-        FLOAT_LT,
-        FLOAT_GT,
-        FLOAT_LE,
-        FLOAT_GE,
-        FLOAT_UNO
-    } FloatCond;
-    /**
-     * Value in the WASM operation stack, each stack element
-     * is an LLVM value
-     */
+#define OPQ_PTR_TYPE INT8_TYPE_PTR
     typedef struct JITValue
     {
         LLVMValueRef value;
     } JITValue;
 
-    /**
-     * Value stack, represents stack elements in a WASM block
-     */
     typedef struct JITValueStack
     {
         JITValue *value_list_head;
@@ -118,11 +80,6 @@ extern "C"
         LLVMValueRef mem_base_addr;
         LLVMValueRef mem_data_size_addr;
         LLVMValueRef mem_cur_page_count_addr;
-        LLVMValueRef mem_bound_check_1byte;
-        LLVMValueRef mem_bound_check_2bytes;
-        LLVMValueRef mem_bound_check_4bytes;
-        LLVMValueRef mem_bound_check_8bytes;
-        LLVMValueRef mem_bound_check_16bytes;
     } JITMemInfo;
 
     typedef struct JITFuncContext
@@ -130,8 +87,6 @@ extern "C"
         WASMFunction *wasm_func;
         LLVMValueRef func;
         LLVMTypeRef llvm_func_type;
-        /* LLVM module for this function, note that in LAZY JIT mode,
-           each aot function belongs to an individual module */
         LLVMModuleRef module;
 
         JITBlock *block_stack;

@@ -66,8 +66,6 @@ void print_opcode(uint8 opcode, uint32 fidx)
         *(uint16 *)(addr) = (uint16)(value); \
     } while (0)
 
-#define WASM_ENABLE_LABELS_AS_VALUES 0
-
 #define PUT_I32_TO_ADDR(addr, value)       \
     do                                     \
     {                                      \
@@ -94,17 +92,14 @@ void print_opcode(uint8 opcode, uint32 fidx)
 #define GET_I32_FROM_ADDR(addr) (*(int32 *)(addr))
 #define GET_F32_FROM_ADDR(addr) (*(float32 *)addr)
 
-#if !defined(OS_ENABLE_HW_BOUND_CHECK) || WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS == 0
-#define CHECK_MEMORY_OVERFLOW(bytes)                            \
-    do                                                          \
-    {                                                           \
-        uint64 offset1 = (uint64)offset + (uint64)addr;         \
-        if (offset1 + bytes <= (uint64)linear_mem_size)         \
-            /* If offset1 is in valid range, maddr must also    \
-               be in valid range, no need to check it again. */ \
-            maddr = memory->memory_data + offset1;              \
-        else                                                    \
-            goto out_of_bounds;                                 \
+#define CHECK_MEMORY_OVERFLOW(bytes)                    \
+    do                                                  \
+    {                                                   \
+        uint64 offset1 = (uint64)offset + (uint64)addr; \
+        if (offset1 + bytes <= (uint64)linear_mem_size) \
+            maddr = memory->memory_data + offset1;      \
+        else                                            \
+            goto out_of_bounds;                         \
     } while (0)
 
 #define CHECK_BULK_MEMORY_OVERFLOW(start, bytes, maddr) \
@@ -112,27 +107,10 @@ void print_opcode(uint8 opcode, uint32 fidx)
     {                                                   \
         uint64 offset1 = (uint32)(start);               \
         if (offset1 + bytes <= (uint64)linear_mem_size) \
-            /* App heap space is not valid space for    \
-             bulk memory operation */                   \
             maddr = memory->memory_data + offset1;      \
         else                                            \
             goto out_of_bounds;                         \
     } while (0)
-#else
-#define CHECK_MEMORY_OVERFLOW(bytes)                    \
-    do                                                  \
-    {                                                   \
-        uint64 offset1 = (uint64)offset + (uint64)addr; \
-        maddr = memory->memory_data + offset1;          \
-    } while (0)
-
-#define CHECK_BULK_MEMORY_OVERFLOW(start, bytes, maddr) \
-    do                                                  \
-    {                                                   \
-        maddr = memory->memory_data + (uint32)(start);  \
-    } while (0)
-#endif /* !defined(OS_ENABLE_HW_BOUND_CHECK) \
-          || WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS == 0 */
 
 static inline uint32
 rotl32(uint32 n, uint32 c)
@@ -213,6 +191,19 @@ f64_max(float64 a, float64 b)
     else
         return a > b ? a : b;
 }
+
+#if WASM_ENABLE_BUILTIN != 0
+
+#define clz32 __builtin_clz
+#define clz64 __builtin_clzll
+#define ctz32 __builtin_ctz
+#define ctz64 __builtin_ctzll
+#define popcount32 __builtin_popcount
+#define popcount64 __builtin_popcountll
+#define local_copysign copysign
+#define local_copysignf copysignf
+
+#else
 
 static inline uint32
 clz32(uint32 type)
@@ -320,6 +311,8 @@ local_copysign(double x, double y)
     return ux.f;
 }
 
+#endif
+
 #define PUSH_I32(value)                   \
     do                                    \
     {                                     \
@@ -400,21 +393,7 @@ local_copysign(double x, double y)
             operation## = *(src_type2 *)(frame_sp);                   \
     } while (0)
 
-#if WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS != 0
 #define DEF_OP_NUMERIC_64 DEF_OP_NUMERIC
-#else
-#define DEF_OP_NUMERIC_64(src_type1, src_type2, src_op_type, operation) \
-    do                                                                  \
-    {                                                                   \
-        src_type1 val1;                                                 \
-        src_type2 val2;                                                 \
-        frame_sp -= 2;                                                  \
-        val1 = (src_type1)GET_##src_op_type##_FROM_ADDR(frame_sp - 2);  \
-        val2 = (src_type2)GET_##src_op_type##_FROM_ADDR(frame_sp);      \
-        val1 operation## = val2;                                        \
-        PUT_##src_op_type##_TO_ADDR(frame_sp - 2, val1);                \
-    } while (0)
-#endif
 
 #define DEF_OP_NUMERIC2(src_type1, src_type2, src_op_type, operation) \
     do                                                                \
@@ -723,14 +702,14 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
     }
 }
 
-#if WASM_ENABLE_LABELS_AS_VALUES != 0
+#if WASM_ENABLE_DISPATCH != 0
 
 #define HANDLE_OP(opcode) HANDLE_##opcode:
 #define FETCH_OPCODE_AND_DISPATCH() goto *handle_table[*frame_ip++]
 
 #define HANDLE_OP_END() FETCH_OPCODE_AND_DISPATCH()
 
-#else /* else of WASM_ENABLE_LABELS_AS_VALUES */
+#else /* else of WASM_ENABLE_DISPATCH */
 #define HANDLE_OP(opcode) case opcode:
 
 #if WASM_ENABLE_DEBUG_INTERP != 0
@@ -742,7 +721,7 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
 #define HANDLE_OP_END() continue
 #endif
 
-#endif /* end of WASM_ENABLE_LABELS_AS_VALUES */
+#endif /* end of WASM_ENABLE_DISPATCH */
 
 static inline uint8 *
 get_global_addr(uint8 *global_data, WASMGlobal *global)
@@ -793,13 +772,13 @@ wasm_interp_call_func_bytecode(WASMModule *module,
 
 #endif
 
-#if WASM_ENABLE_LABELS_AS_VALUES != 0
+#if WASM_ENABLE_DISPATCH != 0
 #define HANDLE_OPCODE(op) &&HANDLE_##op
     DEFINE_GOTO_TABLE(const void *, handle_table);
 #undef HANDLE_OPCODE
 #endif
 
-#if WASM_ENABLE_LABELS_AS_VALUES == 0
+#if WASM_ENABLE_DISPATCH == 0
     while (frame_ip < frame_ip_end)
     {
         opcode = *frame_ip++;
@@ -2479,35 +2458,28 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                     break;
                 }
 
-#if WASM_ENABLE_LABELS_AS_VALUES == 0
                 default:
                     wasm_set_exception(module, "unsupported opcode");
                     goto got_exception;
                 }
+                HANDLE_OP_END();
             }
-#endif
 
-#if WASM_ENABLE_LABELS_AS_VALUES != 0
+#if WASM_ENABLE_DISPATCH != 0
             HANDLE_OP(WASM_OP_UNUSED_0x06)
             HANDLE_OP(WASM_OP_UNUSED_0x07)
             HANDLE_OP(WASM_OP_UNUSED_0x08)
             HANDLE_OP(WASM_OP_UNUSED_0x09)
             HANDLE_OP(WASM_OP_UNUSED_0x0a)
-#if WASM_ENABLE_TAIL_CALL == 0
             HANDLE_OP(WASM_OP_RETURN_CALL)
             HANDLE_OP(WASM_OP_RETURN_CALL_INDIRECT)
-#endif
-#if WASM_ENABLE_SHARED_MEMORY == 0
             HANDLE_OP(WASM_OP_ATOMIC_PREFIX)
-#endif
-#if WASM_ENABLE_REF_TYPES == 0
             HANDLE_OP(WASM_OP_SELECT_T)
             HANDLE_OP(WASM_OP_TABLE_GET)
             HANDLE_OP(WASM_OP_TABLE_SET)
             HANDLE_OP(WASM_OP_REF_NULL)
             HANDLE_OP(WASM_OP_REF_IS_NULL)
             HANDLE_OP(WASM_OP_REF_FUNC)
-#endif
             HANDLE_OP(WASM_OP_UNUSED_0x14)
             HANDLE_OP(WASM_OP_UNUSED_0x15)
             HANDLE_OP(WASM_OP_UNUSED_0x16)
@@ -2515,7 +2487,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(WASM_OP_UNUSED_0x18)
             HANDLE_OP(WASM_OP_UNUSED_0x19)
             HANDLE_OP(WASM_OP_UNUSED_0x27)
-            /* Used by fast interpreter */
             HANDLE_OP(EXT_OP_SET_LOCAL_FAST_64)
             HANDLE_OP(EXT_OP_TEE_LOCAL_FAST_64)
             HANDLE_OP(EXT_OP_COPY_STACK_TOP)
@@ -2527,10 +2498,8 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             }
 #endif
 
-#if WASM_ENABLE_LABELS_AS_VALUES == 0
+#if WASM_ENABLE_DISPATCH == 0
             continue;
-#else
-            FETCH_OPCODE_AND_DISPATCH();
 #endif
 
         call_func_from_interp:
@@ -2608,21 +2577,19 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP_END();
         }
 
-#if !defined(OS_ENABLE_HW_BOUND_CHECK) || WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS == 0 || WASM_ENABLE_BULK_MEMORY != 0
         out_of_bounds:
             wasm_set_exception(module, "out of bounds memory access");
-#endif
 
         got_exception:
             return;
 
-#if WASM_ENABLE_LABELS_AS_VALUES == 0
+#if WASM_ENABLE_DISPATCH == 0
         }
-#else
-            FETCH_OPCODE_AND_DISPATCH();
-#endif
     }
 }
+#else
+}
+#endif
 
 #if WASM_ENABLE_JIT != 0
 static bool
@@ -2753,7 +2720,7 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
 #if WASM_ENABLE_JIT == 0
         wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
 #else
-            llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
+        llvm_jit_call_func_bytecode(module_inst, exec_env, function, argc, argv);
 #endif
         break;
     case Native_Func:

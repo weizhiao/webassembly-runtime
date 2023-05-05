@@ -36,6 +36,8 @@
 #define WASM_ENABLE_JIT 1
 #endif
 
-#define NDEBUG
+#ifndef WASM_ENABLE_DISPATCH
+#define WASM_ENABLE_DISPATCH 1
+#endif
 
 #endif

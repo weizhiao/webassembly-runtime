@@ -171,7 +171,6 @@ PartitionFunction(GlobalValueSet Requested)
                     Function *F1 = M->getFunction(func_name);
                     if (F1)
                     {
-                        LOG_DEBUG("compile func %s", func_name);
                         GVsToAdd.push_back(cast<GlobalValue>(F1));
                     }
                 }

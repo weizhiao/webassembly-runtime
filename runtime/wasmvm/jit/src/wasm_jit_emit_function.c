@@ -50,8 +50,8 @@ static bool jit_call_indirect(JITCompContext *comp_ctx, JITFuncContext *func_ctx
 
     import_func_param_types[0] = comp_ctx->exec_env_type; /* exec_env */
     import_func_param_types[1] = I32_TYPE;                /* func_idx */
-    import_func_param_types[2] = INT32_PTR_TYPE;          /* argv */
-    import_func_param_types[3] = INT32_PTR_TYPE;          /* argv_ret */
+    import_func_param_types[2] = I32_TYPE_PTR;            /* argv */
+    import_func_param_types[3] = I32_TYPE_PTR;            /* argv_ret */
 
     llvm_func_type = LLVMFunctionType(INT8_TYPE, import_func_param_types, 4, false);
 
@@ -122,7 +122,6 @@ jit_call_direct(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMBuilderRef builder = comp_ctx->builder;
     LLVMTypeRef llvm_func_type, *llvm_ext_result_types, llvm_func_ptr_type;
     uint32 i;
-    uint8 *wasm_result_types = wasm_type->result;
     uint32 param_count = wasm_type->param_count;
     uint32 result_count = wasm_type->result_count;
     uint32 ext_ret_count = result_count > 1 ? result_count - 1 : 0;
@@ -277,12 +276,11 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     LLVMValueRef llvm_elem_idx, llvm_table_elem, llvm_func_idx;
     LLVMValueRef ftype_idx_ptr, ftype_idx, ftype_idx_const, llvm_import_func_count;
     LLVMValueRef cmp_elem_idx, cmp_func_idx, cmp_ftype_idx;
-    LLVMValueRef llvm_func, func_ptr, table_size_const;
+    LLVMValueRef table_size_const;
     LLVMValueRef ext_ret_offset, ext_ret_ptr;
     LLVMValueRef *llvm_param_values = NULL, *llvm_ret_values = NULL;
     LLVMValueRef *result_phis = NULL;
     LLVMTypeRef *llvm_param_types = NULL;
-    LLVMTypeRef llvm_func_type;
     LLVMTypeRef ext_ret_ptr_type;
     LLVMBasicBlockRef check_elem_idx_succ, check_ftype_idx_succ;
     LLVMBasicBlockRef check_func_idx_succ, block_return, block_curr;
@@ -321,7 +319,7 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
 
     if (!(table_size_const =
               LLVMBuildBitCast(comp_ctx->builder, table_size_const,
-                               INT32_PTR_TYPE, "cur_siuze_i32p")))
+                               I32_TYPE_PTR, "cur_siuze_i32p")))
     {
         HANDLE_FAILURE("LLVMBuildBitCast");
         goto fail;
@@ -371,11 +369,11 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     llvm_table_elem = LLVMBuildBitCast(comp_ctx->builder, llvm_table_elem,
                                        INT8_PPTR_TYPE, "table_data_ptr");
 
-    llvm_table_elem = LLVMBuildLoad2(comp_ctx->builder, INT8_PTR_TYPE, llvm_table_elem,
+    llvm_table_elem = LLVMBuildLoad2(comp_ctx->builder, INT8_TYPE_PTR, llvm_table_elem,
                                      "table_data_base");
 
     if (!(llvm_table_elem = LLVMBuildBitCast(comp_ctx->builder, llvm_table_elem,
-                                             INT32_PTR_TYPE, "table_elem_i32p")))
+                                             I32_TYPE_PTR, "table_elem_i32p")))
     {
         HANDLE_FAILURE("LLVMBuildBitCast");
         goto fail;

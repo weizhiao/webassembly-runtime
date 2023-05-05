@@ -118,7 +118,13 @@
         "memory": "cpp",
         "memory_resource": "cpp",
         "numeric": "cpp",
-        "stop_token": "cpp"
+        "stop_token": "cpp",
+        "typeindex": "c",
+        "wasm_jit_emit_numberic.h": "c",
+        "wasm_llvm_opcode.h": "c",
+        "config.h": "c",
+        "platform_internal.h": "c",
+        "math.h": "c"
     },
     "cmake.configureOnOpen": true
 }

@@ -697,7 +697,7 @@ typedef enum WASMAtomicEXTOpcode
         HANDLE_OPCODE(WASM_OP_SELECT_T),             /* 0x1c */ \
         HANDLE_OPCODE(WASM_OP_GET_GLOBAL_64),        /* 0x1d */ \
         HANDLE_OPCODE(WASM_OP_SET_GLOBAL_64),        /* 0x1e */ \
-        HANDLE_OPCODE(WASM_OP_SET_GLOBAL_AUX_STACK), /* 0x1f */ \
+        HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0x1f */ \
         HANDLE_OPCODE(WASM_OP_GET_LOCAL),            /* 0x20 */ \
         HANDLE_OPCODE(WASM_OP_SET_LOCAL),            /* 0x21 */ \
         HANDLE_OPCODE(WASM_OP_TEE_LOCAL),            /* 0x22 */ \
@@ -873,22 +873,19 @@ typedef enum WASMAtomicEXTOpcode
         HANDLE_OPCODE(EXT_OP_COPY_STACK_TOP),        /* 0xcc */ \
         HANDLE_OPCODE(EXT_OP_COPY_STACK_TOP_I64),    /* 0xcd */ \
         HANDLE_OPCODE(EXT_OP_COPY_STACK_VALUES),     /* 0xce */ \
-        HANDLE_OPCODE(WASM_OP_IMPDEP),               /* 0xcf */ \
+        HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0xcf */ \
         HANDLE_OPCODE(WASM_OP_REF_NULL),             /* 0xd0 */ \
         HANDLE_OPCODE(WASM_OP_REF_IS_NULL),          /* 0xd1 */ \
         HANDLE_OPCODE(WASM_OP_REF_FUNC),             /* 0xd2 */ \
-        HANDLE_OPCODE(EXT_OP_BLOCK),                 /* 0xd3 */ \
-        HANDLE_OPCODE(EXT_OP_LOOP),                  /* 0xd4 */ \
-        HANDLE_OPCODE(EXT_OP_IF),                    /* 0xd5 */ \
-        HANDLE_OPCODE(EXT_OP_BR_TABLE_CACHE),        /* 0xd6 */ \
+        HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0xd3 */ \
+        HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0xd4 */ \
+        HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0xd5 */ \
+        HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0xd6 */ \
     };                                                          \
     do                                                          \
     {                                                           \
         _name[WASM_OP_MISC_PREFIX] =                            \
             HANDLE_OPCODE(WASM_OP_MISC_PREFIX); /* 0xfc */      \
-        _name[WASM_OP_ATOMIC_PREFIX] =                          \
-            HANDLE_OPCODE(WASM_OP_ATOMIC_PREFIX); /* 0xfe */    \
-        DEF_DEBUG_BREAK_HANDLE(_name)                           \
     } while (0)
 
 #endif

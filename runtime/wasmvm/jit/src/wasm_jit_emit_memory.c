@@ -2,6 +2,7 @@
 #include "wasm_jit_emit_exception.h"
 #include "wasm_jit_emit_control.h"
 #include "wasm_exception.h"
+#include "wasm_memory.h"
 
 #define BUILD_ICMP(op, left, right, res, name)                              \
     do                                                                      \
@@ -101,241 +102,6 @@ fail:
     return NULL;
 }
 
-bool wasm_jit_compile_op_i32_load(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                  uint32 align, uint32 offset, uint32 bytes, bool sign,
-                                  bool atomic)
-{
-    LLVMValueRef maddr, value = NULL;
-    LLVMTypeRef data_type;
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, bytes)))
-        return false;
-
-    switch (bytes)
-    {
-    case 4:
-        LLVMOPBitCast(maddr, INT32_PTR_TYPE);
-        LLVMOPLoad(value, maddr, I32_TYPE);
-        break;
-    case 2:
-    case 1:
-        if (bytes == 2)
-        {
-            LLVMOPBitCast(maddr, INT16_PTR_TYPE);
-            data_type = INT16_TYPE;
-        }
-        else
-        {
-            LLVMOPBitCast(maddr, INT8_PTR_TYPE);
-            data_type = INT8_TYPE;
-        }
-        {
-            LLVMOPLoad(value, maddr, data_type);
-            if (sign)
-                LLVMOPSExt(value, I32_TYPE);
-            else
-                LLVMOPZExt(value, I32_TYPE);
-        }
-        break;
-    default:;
-        break;
-    }
-
-    PUSH_I32(value);
-    (void)data_type;
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_i64_load(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                  uint32 align, uint32 offset, uint32 bytes, bool sign,
-                                  bool atomic)
-{
-    LLVMValueRef maddr, value = NULL;
-    LLVMTypeRef data_type;
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, bytes)))
-        return false;
-
-    switch (bytes)
-    {
-    case 8:
-        LLVMOPBitCast(maddr, INT64_PTR_TYPE);
-        LLVMOPLoad(value, maddr, I64_TYPE);
-        break;
-    case 4:
-    case 2:
-    case 1:
-        if (bytes == 4)
-        {
-            LLVMOPBitCast(maddr, INT32_PTR_TYPE);
-            data_type = I32_TYPE;
-        }
-        else if (bytes == 2)
-        {
-            LLVMOPBitCast(maddr, INT16_PTR_TYPE);
-            data_type = INT16_TYPE;
-        }
-        else
-        {
-            LLVMOPBitCast(maddr, INT8_PTR_TYPE);
-            data_type = INT8_TYPE;
-        }
-        {
-            LLVMOPLoad(value, maddr, data_type);
-            if (sign)
-                LLVMOPSExt(value, I64_TYPE);
-            else
-                LLVMOPZExt(value, I64_TYPE);
-        }
-        break;
-    default:;
-        break;
-    }
-
-    PUSH_I64(value);
-    (void)data_type;
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_f32_load(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                  uint32 align, uint32 offset)
-{
-    LLVMValueRef maddr, value;
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 4)))
-        return false;
-
-    LLVMOPBitCast(maddr, F32_PTR_TYPE);
-    LLVMOPLoad(value, maddr, F32_TYPE);
-    PUSH_F32(value);
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_f64_load(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                  uint32 align, uint32 offset)
-{
-    LLVMValueRef maddr, value;
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8)))
-        return false;
-
-    LLVMOPBitCast(maddr, F64_PTR_TYPE);
-    LLVMOPLoad(value, maddr, F64_TYPE);
-    PUSH_F64(value);
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_i32_store(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                   uint32 align, uint32 offset, uint32 bytes, bool atomic)
-{
-    LLVMValueRef maddr, value, res;
-
-    POP_I32(value);
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, bytes)))
-        return false;
-
-    switch (bytes)
-    {
-    case 4:
-        LLVMOPBitCast(maddr, INT32_PTR_TYPE);
-        break;
-    case 2:
-        LLVMOPBitCast(maddr, INT16_PTR_TYPE);
-        LLVMOPTrunc(value, INT16_TYPE);
-        break;
-    case 1:
-        LLVMOPBitCast(maddr, INT8_PTR_TYPE);
-        LLVMOPTrunc(value, INT8_TYPE);
-        break;
-    default:;
-        break;
-    }
-
-    LLVMOPStore(res, value, maddr);
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_i64_store(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                   uint32 align, uint32 offset, uint32 bytes, bool atomic)
-{
-    LLVMValueRef maddr, value, res;
-
-    POP_I64(value);
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, bytes)))
-        return false;
-
-    switch (bytes)
-    {
-    case 8:
-        LLVMOPBitCast(maddr, INT64_PTR_TYPE);
-        break;
-    case 4:
-        LLVMOPBitCast(maddr, INT32_PTR_TYPE);
-        LLVMOPTrunc(value, I32_TYPE);
-        break;
-    case 2:
-        LLVMOPBitCast(maddr, INT16_PTR_TYPE);
-        LLVMOPTrunc(value, INT16_TYPE);
-        break;
-    case 1:
-        LLVMOPBitCast(maddr, INT8_PTR_TYPE);
-        LLVMOPTrunc(value, INT8_TYPE);
-        break;
-    default:;
-        break;
-    }
-    LLVMOPStore(res, value, maddr);
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_f32_store(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                   uint32 align, uint32 offset)
-{
-    LLVMValueRef maddr, value, res;
-
-    POP_F32(value);
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 4)))
-        return false;
-
-    LLVMOPBitCast(maddr, F32_PTR_TYPE);
-    LLVMOPStore(res, value, maddr);
-    return true;
-fail:
-    return false;
-}
-
-bool wasm_jit_compile_op_f64_store(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                                   uint32 align, uint32 offset)
-{
-    LLVMValueRef maddr, value, res;
-
-    POP_F64(value);
-
-    if (!(maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8)))
-        return false;
-
-    LLVMOPBitCast(maddr, F64_PTR_TYPE);
-    LLVMOPStore(res, value, maddr);
-    return true;
-fail:
-    return false;
-}
-
 static LLVMValueRef
 get_memory_curr_page_count(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
 {
@@ -351,8 +117,6 @@ get_memory_curr_page_count(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     }
 
     return mem_size;
-fail:
-    return NULL;
 }
 
 bool wasm_jit_compile_op_memory_size(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
@@ -376,7 +140,7 @@ bool wasm_jit_compile_op_memory_grow(JITCompContext *comp_ctx, JITFuncContext *f
     POP_I32(delta);
 
     /* Function type of wasm_jit_enlarge_memory() */
-    param_types[0] = INT8_PTR_TYPE;
+    param_types[0] = INT8_TYPE_PTR;
     param_types[1] = I32_TYPE;
     ret_type = INT8_TYPE;
 
@@ -501,7 +265,7 @@ bool wasm_jit_compile_op_memory_init(JITCompContext *comp_ctx, JITFuncContext *f
     POP_I32(offset);
     POP_I32(dst);
 
-    param_types[0] = INT8_PTR_TYPE;
+    param_types[0] = INT8_TYPE_PTR;
     param_types[1] = I32_TYPE;
     param_types[2] = I32_TYPE;
     param_types[3] = I32_TYPE;
@@ -562,7 +326,7 @@ bool wasm_jit_compile_op_data_drop(JITCompContext *comp_ctx, JITFuncContext *fun
     seg = I32_CONST(seg_index);
     CHECK_LLVM_CONST(seg);
 
-    param_types[0] = INT8_PTR_TYPE;
+    param_types[0] = INT8_TYPE_PTR;
     param_types[1] = I32_TYPE;
     ret_type = INT8_TYPE;
 
@@ -600,10 +364,10 @@ bool wasm_jit_compile_op_memory_copy(JITCompContext *comp_ctx, JITFuncContext *f
     LLVMTypeRef param_types[3], ret_type, func_type, func_ptr_type;
     LLVMValueRef func, params[3];
 
-    param_types[0] = INT8_PTR_TYPE;
-    param_types[1] = INT8_PTR_TYPE;
+    param_types[0] = INT8_TYPE_PTR;
+    param_types[1] = INT8_TYPE_PTR;
     param_types[2] = I32_TYPE;
-    ret_type = INT8_PTR_TYPE;
+    ret_type = INT8_TYPE_PTR;
 
     if (!(func_type = LLVMFunctionType(ret_type, param_types, 3, false)))
     {
@@ -655,10 +419,10 @@ bool wasm_jit_compile_op_memory_fill(JITCompContext *comp_ctx, JITFuncContext *f
     if (!(dst_addr = check_bulk_memory_overflow(comp_ctx, func_ctx, dst, len)))
         return false;
 
-    param_types[0] = INT8_PTR_TYPE;
+    param_types[0] = INT8_TYPE_PTR;
     param_types[1] = I32_TYPE;
     param_types[2] = I32_TYPE;
-    ret_type = INT8_PTR_TYPE;
+    ret_type = INT8_TYPE_PTR;
 
     if (!(func_type = LLVMFunctionType(ret_type, param_types, 3, false)))
     {

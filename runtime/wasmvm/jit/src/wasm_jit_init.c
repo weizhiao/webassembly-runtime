@@ -68,7 +68,6 @@ bool init_llvm_jit_functions_stage1(WASMModule *module)
 
 bool init_llvm_jit_functions_stage2(WASMModule *module)
 {
-    char *wasm_jit_last_error;
     uint32 i, define_function_count;
     uint32 import_function_count;
 
@@ -80,7 +79,6 @@ bool init_llvm_jit_functions_stage2(WASMModule *module)
 
     if (!wasm_jit_compile_wasm(module))
     {
-        wasm_jit_last_error = wasm_jit_get_last_error();
         return false;
     }
 
@@ -101,13 +99,6 @@ bool init_llvm_jit_functions_stage2(WASMModule *module)
             LLVMDisposeErrorMessage(err_msg);
             return false;
         }
-
-        /**
-         * No need to lock the func_ptr[func_idx] here as it is basic
-         * data type, the load/store for it can be finished by one cpu
-         * instruction, and there can be only one cpu instruction
-         * loading/storing at the same time.
-         */
         module->func_ptrs[i + import_function_count] = (void *)func_addr;
     }
 

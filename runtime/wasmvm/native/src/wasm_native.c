@@ -2,7 +2,7 @@
 #include "wasm_memory.h"
 #include "wasm_exception.h"
 
-static FILE *call_info;
+// static FILE *call_info;
 
 static NativeSymbolsList g_native_symbols_list = NULL;
 

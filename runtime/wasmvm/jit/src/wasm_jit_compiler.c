@@ -1,5 +1,4 @@
 #include "wasm_jit_compiler.h"
-#include "wasm_jit_emit_compare.h"
 #include "wasm_jit_emit_conversion.h"
 #include "wasm_jit_emit_memory.h"
 #include "wasm_jit_emit_exception.h"
@@ -10,14 +9,134 @@
 #include "wasm_opcode.h"
 #include <errno.h>
 
+#define DEF_OP_STORE(type)                                                             \
+    do                                                                                 \
+    {                                                                                  \
+        LLVMValueRef _maddr, _value, _res;                                             \
+        POP(_value);                                                                   \
+        if (!(_maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8))) \
+            return false;                                                              \
+        LLVMOPBitCast(_maddr, type##_PTR);                                             \
+        LLVMOPStore(_res, _value, _maddr);                                             \
+    } while (0)
+
+#define DEF_OP_TRUNCSTORE(type)                                                        \
+    do                                                                                 \
+    {                                                                                  \
+        LLVMValueRef _maddr, _value, _res;                                             \
+        POP(_value);                                                                   \
+        if (!(_maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8))) \
+            return false;                                                              \
+        LLVMOPBitCast(_maddr, type##_PTR);                                             \
+        LLVMOPTrunc(_value, type);                                                     \
+        LLVMOPStore(_res, _value, _maddr);                                             \
+    } while (0)
+
+#define DEF_OP_LOAD(type)                                                              \
+    do                                                                                 \
+    {                                                                                  \
+        LLVMValueRef _maddr, _value;                                                   \
+        if (!(_maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8))) \
+            return false;                                                              \
+        LLVMOPBitCast(_maddr, type##_PTR);                                             \
+        LLVMOPLoad(_value, _maddr, type);                                              \
+        PUSH(_value);                                                                  \
+    } while (0)
+
+#define DEF_OP_SCASTLOAD(cast_type, type)                                              \
+    do                                                                                 \
+    {                                                                                  \
+        LLVMValueRef _maddr, _value;                                                   \
+        if (!(_maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8))) \
+            return false;                                                              \
+        LLVMOPBitCast(_maddr, type##_PTR);                                             \
+        LLVMOPLoad(_value, _maddr, type);                                              \
+        LLVMOPSExt(_value, cast_type);                                                 \
+        PUSH(_value);                                                                  \
+    } while (0)
+
+#define DEF_OP_UCASTLOAD(cast_type, type)                                              \
+    do                                                                                 \
+    {                                                                                  \
+        LLVMValueRef _maddr, _value;                                                   \
+        if (!(_maddr = wasm_jit_check_memory_overflow(comp_ctx, func_ctx, offset, 8))) \
+            return false;                                                              \
+        LLVMOPBitCast(_maddr, type##_PTR);                                             \
+        LLVMOPLoad(_value, _maddr, type);                                              \
+        LLVMOPZExt(_value, cast_type);                                                 \
+        PUSH(_value);                                                                  \
+    } while (0)
+
+#define DEF_OP_REINTERPRET(llvm_value, dst_type) \
+    do                                           \
+    {                                            \
+        POP(llvm_value);                         \
+        LLVMOPSIntCast(llvm_value, dst_type);    \
+        PUSH(llvm_value);                        \
+    } while (0)
+
+#define DEF_OP_EXTEND_S(llvm_value, src_type, dst_type) \
+    do                                                  \
+    {                                                   \
+        POP(llvm_value);                                \
+        LLVMOPSIntCast(llvm_value, src_type);           \
+        LLVMOPSExt(llvm_value, dst_type);               \
+        PUSH(llvm_value);                               \
+    } while (0)
+
+#define DEF_OP_CONVERT_S(dst_type)                                 \
+    do                                                             \
+    {                                                              \
+        LLVMValueRef _res;                                         \
+        POP(_res);                                                 \
+        LLVMOPSIToFP(_res, dst_type, "f" #dst_type "_convert_si"); \
+        PUSH(_res);                                                \
+    } while (0)
+
+#define DEF_OP_CONVERT_U(dst_type)                                 \
+    do                                                             \
+    {                                                              \
+        LLVMValueRef _res;                                         \
+        POP(_res);                                                 \
+        LLVMOPUIToFP(_res, dst_type, "f" #dst_type "_convert_ui"); \
+        PUSH(_res);                                                \
+    } while (0)
+
+#define DEF_OP_NUMBERIC(op)                   \
+    do                                        \
+    {                                         \
+        LLVMValueRef _res, _left, _right;     \
+        POP(_right);                          \
+        POP(_left);                           \
+        LLVMOP##op(_left, _right, _res, #op); \
+        PUSH(_res);                           \
+    } while (0)
+
+#define DEF_OP_COMPARE(op, kind)                    \
+    do                                              \
+    {                                               \
+        LLVMValueRef _res, _left, _right;           \
+        POP(_right);                                \
+        POP(_left);                                 \
+        LLVMOP##op(_res, kind, _left, _right, #op); \
+        PUSH_COND(_res);                            \
+    } while (0)
+
+#define DEF_OP_MATH(op)    \
+    do                     \
+    {                      \
+        LLVMValueRef _res; \
+        POP(_res);         \
+        LLVMOP##op(_res);  \
+        PUSH(_res);        \
+    } while (0)
+
 static inline LLVMTypeRef GET_LLVM_PTRTYPE(JITCompContext *comp_ctx, uint8 valuetype)
 {
-    LLVMTypeRef ptr_type;
+    LLVMTypeRef ptr_type = NULL;
     switch (valuetype)
     {
     case VALUE_TYPE_I32:
-    case VALUE_TYPE_EXTERNREF:
-    case VALUE_TYPE_FUNCREF:
         ptr_type = comp_ctx->basic_types.int32_ptr_type;
         break;
     case VALUE_TYPE_I64:
@@ -90,13 +209,11 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
     uint8 *frame_ip = (uint8 *)wasm_func->func_ptr, opcode, *p_f32, *p_f64;
     uint8 *frame_ip_end = wasm_func->code_end;
     uint8 *func_param_types = wasm_func->param_types;
-    uint8 *func_result_types = wasm_func->result_types;
     uint8 *param_types;
     uint8 *result_types;
     uint8 *func_local_types = wasm_func->local_types;
     uint8 value_type;
     uint16 func_param_count = wasm_func->param_count;
-    uint16 func_result_count = wasm_func->result_count;
     uint16 param_count, result_count;
     uint32 br_depth, *br_depths, br_count;
     uint32 func_idx, type_idx, mem_idx, local_idx, global_idx, i;
@@ -104,6 +221,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
     uint32 type_index;
     uint32 offset;
     LLVMValueRef llvm_offset, llvm_cond;
+    LLVMValueRef llvm_maddr;
     LLVMValueRef llvm_ptr;
     LLVMTypeRef llvm_ptr_type;
     bool sign = true;
@@ -345,115 +463,118 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_I32_LOAD:
-            bytes = 4;
-            sign = true;
-            goto op_i32_load;
-        case WASM_OP_I32_LOAD8_S:
-        case WASM_OP_I32_LOAD8_U:
-            bytes = 1;
-            sign = (opcode == WASM_OP_I32_LOAD8_S) ? true : false;
-            goto op_i32_load;
-        case WASM_OP_I32_LOAD16_S:
-        case WASM_OP_I32_LOAD16_U:
-            bytes = 2;
-            sign = (opcode == WASM_OP_I32_LOAD16_S) ? true : false;
-        op_i32_load:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_i32_load(comp_ctx, func_ctx, align, offset,
-                                              bytes, sign, false))
-                return false;
+            DEF_OP_LOAD(I32_TYPE);
+            break;
+        case WASM_OP_I32_LOAD8_S:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_SCASTLOAD(I32_TYPE, INT8_TYPE);
+            break;
+        case WASM_OP_I32_LOAD8_U:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_UCASTLOAD(I32_TYPE, INT8_TYPE);
+            break;
+        case WASM_OP_I32_LOAD16_S:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_SCASTLOAD(I32_TYPE, INT16_TYPE);
+            break;
+        case WASM_OP_I32_LOAD16_U:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_UCASTLOAD(I32_TYPE, INT16_TYPE);
             break;
 
         case WASM_OP_I64_LOAD:
-            bytes = 8;
-            sign = true;
-            goto op_i64_load;
-        case WASM_OP_I64_LOAD8_S:
-        case WASM_OP_I64_LOAD8_U:
-            bytes = 1;
-            sign = (opcode == WASM_OP_I64_LOAD8_S) ? true : false;
-            goto op_i64_load;
-        case WASM_OP_I64_LOAD16_S:
-        case WASM_OP_I64_LOAD16_U:
-            bytes = 2;
-            sign = (opcode == WASM_OP_I64_LOAD16_S) ? true : false;
-            goto op_i64_load;
-        case WASM_OP_I64_LOAD32_S:
-        case WASM_OP_I64_LOAD32_U:
-            bytes = 4;
-            sign = (opcode == WASM_OP_I64_LOAD32_S) ? true : false;
-        op_i64_load:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_i64_load(comp_ctx, func_ctx, align, offset,
-                                              bytes, sign, false))
-                return false;
+            DEF_OP_LOAD(I64_TYPE);
+            break;
+        case WASM_OP_I64_LOAD8_S:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_SCASTLOAD(I64_TYPE, INT8_TYPE);
+            break;
+        case WASM_OP_I64_LOAD8_U:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_UCASTLOAD(I64_TYPE, INT8_TYPE);
+            break;
+        case WASM_OP_I64_LOAD16_S:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_SCASTLOAD(I64_TYPE, INT16_TYPE);
+            break;
+        case WASM_OP_I64_LOAD16_U:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_UCASTLOAD(I64_TYPE, INT16_TYPE);
+            break;
+        case WASM_OP_I64_LOAD32_S:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_SCASTLOAD(I64_TYPE, I32_TYPE);
+            break;
+        case WASM_OP_I64_LOAD32_U:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_UCASTLOAD(I64_TYPE, I32_TYPE);
             break;
 
         case WASM_OP_F32_LOAD:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_f32_load(comp_ctx, func_ctx, align, offset))
-                return false;
+            DEF_OP_LOAD(F32_TYPE);
             break;
 
         case WASM_OP_F64_LOAD:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_f64_load(comp_ctx, func_ctx, align, offset))
-                return false;
+            DEF_OP_LOAD(F64_TYPE);
             break;
 
         case WASM_OP_I32_STORE:
-            bytes = 4;
-            goto op_i32_store;
-        case WASM_OP_I32_STORE8:
-            bytes = 1;
-            goto op_i32_store;
-        case WASM_OP_I32_STORE16:
-            bytes = 2;
-        op_i32_store:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_i32_store(comp_ctx, func_ctx, align, offset,
-                                               bytes, false))
-                return false;
+            DEF_OP_STORE(I32_TYPE);
+            break;
+        case WASM_OP_I32_STORE8:
+        case WASM_OP_I64_STORE8:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_TRUNCSTORE(INT8_TYPE);
+            break;
+        case WASM_OP_I32_STORE16:
+        case WASM_OP_I64_STORE16:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_TRUNCSTORE(INT16_TYPE);
             break;
 
         case WASM_OP_I64_STORE:
-            bytes = 8;
-            goto op_i64_store;
-        case WASM_OP_I64_STORE8:
-            bytes = 1;
-            goto op_i64_store;
-        case WASM_OP_I64_STORE16:
-            bytes = 2;
-            goto op_i64_store;
-        case WASM_OP_I64_STORE32:
-            bytes = 4;
-        op_i64_store:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_i64_store(comp_ctx, func_ctx, align, offset,
-                                               bytes, false))
-                return false;
+            DEF_OP_STORE(I64_TYPE);
+            break;
+        case WASM_OP_I64_STORE32:
+            read_leb_uint32(frame_ip, frame_ip_end, align);
+            read_leb_uint32(frame_ip, frame_ip_end, offset);
+            DEF_OP_TRUNCSTORE(I32_TYPE);
             break;
 
         case WASM_OP_F32_STORE:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_f32_store(comp_ctx, func_ctx, align,
-                                               offset))
-                return false;
+            DEF_OP_STORE(F32_TYPE);
             break;
 
         case WASM_OP_F64_STORE:
             read_leb_uint32(frame_ip, frame_ip_end, align);
             read_leb_uint32(frame_ip, frame_ip_end, offset);
-            if (!wasm_jit_compile_op_f64_store(comp_ctx, func_ctx, align,
-                                               offset))
-                return false;
+            DEF_OP_STORE(F64_TYPE);
             break;
 
         case WASM_OP_MEMORY_SIZE:
@@ -498,57 +619,79 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_I32_EQZ:
-        case WASM_OP_I32_EQ:
-        case WASM_OP_I32_NE:
-        case WASM_OP_I32_LT_S:
-        case WASM_OP_I32_LT_U:
-        case WASM_OP_I32_GT_S:
-        case WASM_OP_I32_GT_U:
-        case WASM_OP_I32_LE_S:
-        case WASM_OP_I32_LE_U:
-        case WASM_OP_I32_GE_S:
-        case WASM_OP_I32_GE_U:
-            if (!wasm_jit_compile_op_i32_compare(
-                    comp_ctx, func_ctx, INT_EQZ + opcode - WASM_OP_I32_EQZ))
-                return false;
+            POP(llvm_value);
+            LLVMOPICmp(llvm_value, LLVMIntEQ, llvm_value, I32_ZERO, "i32_eqz");
+            PUSH_COND(llvm_value);
             break;
-
         case WASM_OP_I64_EQZ:
+            POP(llvm_value);
+            LLVMOPICmp(llvm_value, LLVMIntEQ, llvm_value, I64_ZERO, "i64_eqz");
+            PUSH_COND(llvm_value);
+            break;
+        case WASM_OP_I32_EQ:
         case WASM_OP_I64_EQ:
+            DEF_OP_COMPARE(ICmp, LLVMIntEQ);
+            break;
+        case WASM_OP_I32_NE:
         case WASM_OP_I64_NE:
+            DEF_OP_COMPARE(ICmp, LLVMIntNE);
+            break;
+        case WASM_OP_I32_LT_S:
         case WASM_OP_I64_LT_S:
+            DEF_OP_COMPARE(ICmp, LLVMIntSLT);
+            break;
+        case WASM_OP_I32_LT_U:
         case WASM_OP_I64_LT_U:
+            DEF_OP_COMPARE(ICmp, LLVMIntULT);
+            break;
+        case WASM_OP_I32_GT_S:
         case WASM_OP_I64_GT_S:
+            DEF_OP_COMPARE(ICmp, LLVMIntSGT);
+            break;
+        case WASM_OP_I32_GT_U:
         case WASM_OP_I64_GT_U:
+            DEF_OP_COMPARE(ICmp, LLVMIntUGT);
+            break;
+        case WASM_OP_I32_LE_S:
         case WASM_OP_I64_LE_S:
+            DEF_OP_COMPARE(ICmp, LLVMIntSLE);
+            break;
+        case WASM_OP_I32_LE_U:
         case WASM_OP_I64_LE_U:
+            DEF_OP_COMPARE(ICmp, LLVMIntULE);
+            break;
+        case WASM_OP_I32_GE_S:
         case WASM_OP_I64_GE_S:
+            DEF_OP_COMPARE(ICmp, LLVMIntSGE);
+            break;
+        case WASM_OP_I32_GE_U:
         case WASM_OP_I64_GE_U:
-            if (!wasm_jit_compile_op_i64_compare(
-                    comp_ctx, func_ctx, INT_EQZ + opcode - WASM_OP_I64_EQZ))
-                return false;
+            DEF_OP_COMPARE(ICmp, LLVMIntUGE);
             break;
 
         case WASM_OP_F32_EQ:
-        case WASM_OP_F32_NE:
-        case WASM_OP_F32_LT:
-        case WASM_OP_F32_GT:
-        case WASM_OP_F32_LE:
-        case WASM_OP_F32_GE:
-            if (!wasm_jit_compile_op_f32_compare(
-                    comp_ctx, func_ctx, FLOAT_EQ + opcode - WASM_OP_F32_EQ))
-                return false;
-            break;
-
         case WASM_OP_F64_EQ:
+            DEF_OP_COMPARE(FCmp, LLVMRealOEQ);
+            break;
+        case WASM_OP_F32_NE:
         case WASM_OP_F64_NE:
+            DEF_OP_COMPARE(FCmp, LLVMRealUNE);
+            break;
+        case WASM_OP_F32_LT:
         case WASM_OP_F64_LT:
+            DEF_OP_COMPARE(FCmp, LLVMRealOLT);
+            break;
+        case WASM_OP_F32_GT:
         case WASM_OP_F64_GT:
+            DEF_OP_COMPARE(FCmp, LLVMRealOGT);
+            break;
+        case WASM_OP_F32_LE:
         case WASM_OP_F64_LE:
+            DEF_OP_COMPARE(FCmp, LLVMRealOLE);
+            break;
+        case WASM_OP_F32_GE:
         case WASM_OP_F64_GE:
-            if (!wasm_jit_compile_op_f64_compare(
-                    comp_ctx, func_ctx, FLOAT_EQ + opcode - WASM_OP_F64_EQ))
-                return false;
+            DEF_OP_COMPARE(FCmp, LLVMRealOGE);
             break;
 
         case WASM_OP_I32_CLZ:
@@ -567,34 +710,62 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_I32_ADD:
+        case WASM_OP_I64_ADD:
+            DEF_OP_NUMBERIC(Add);
+            break;
         case WASM_OP_I32_SUB:
+        case WASM_OP_I64_SUB:
+            DEF_OP_NUMBERIC(Sub);
+            break;
         case WASM_OP_I32_MUL:
+        case WASM_OP_I64_MUL:
+            DEF_OP_NUMBERIC(Mul);
+            break;
         case WASM_OP_I32_DIV_S:
-        case WASM_OP_I32_DIV_U:
         case WASM_OP_I32_REM_S:
-        case WASM_OP_I32_REM_U:
             if (!wasm_jit_compile_op_i32_arithmetic(
                     comp_ctx, func_ctx, INT_ADD + opcode - WASM_OP_I32_ADD,
                     &frame_ip))
                 return false;
             break;
-
+        case WASM_OP_I32_DIV_U:
+        case WASM_OP_I64_DIV_U:
+            DEF_OP_NUMBERIC(UDiv);
+            break;
+        case WASM_OP_I32_REM_U:
+        case WASM_OP_I64_REM_U:
+            DEF_OP_NUMBERIC(URem);
+            break;
         case WASM_OP_I32_AND:
+        case WASM_OP_I64_AND:
+            DEF_OP_NUMBERIC(And);
+            break;
         case WASM_OP_I32_OR:
+        case WASM_OP_I64_OR:
+            DEF_OP_NUMBERIC(Or);
+            break;
         case WASM_OP_I32_XOR:
-            if (!wasm_jit_compile_op_i32_bitwise(
-                    comp_ctx, func_ctx, INT_SHL + opcode - WASM_OP_I32_AND))
-                return false;
+        case WASM_OP_I64_XOR:
+            DEF_OP_NUMBERIC(Xor);
             break;
 
         case WASM_OP_I32_SHL:
+        case WASM_OP_I64_SHL:
+            DEF_OP_NUMBERIC(Shl);
+            break;
         case WASM_OP_I32_SHR_S:
+        case WASM_OP_I64_SHR_S:
+            DEF_OP_NUMBERIC(AShr);
+            break;
         case WASM_OP_I32_SHR_U:
+        case WASM_OP_I64_SHR_U:
+            DEF_OP_NUMBERIC(LShr);
+            break;
         case WASM_OP_I32_ROTL:
+            DEF_OP_NUMBERIC(Rotl32);
+            break;
         case WASM_OP_I32_ROTR:
-            if (!wasm_jit_compile_op_i32_shift(
-                    comp_ctx, func_ctx, INT_SHL + opcode - WASM_OP_I32_SHL))
-                return false;
+            DEF_OP_NUMBERIC(Rotr32);
             break;
 
         case WASM_OP_I64_CLZ:
@@ -611,92 +782,108 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             if (!wasm_jit_compile_op_i64_popcnt(comp_ctx, func_ctx))
                 return false;
             break;
-
-        case WASM_OP_I64_ADD:
-        case WASM_OP_I64_SUB:
-        case WASM_OP_I64_MUL:
         case WASM_OP_I64_DIV_S:
-        case WASM_OP_I64_DIV_U:
         case WASM_OP_I64_REM_S:
-        case WASM_OP_I64_REM_U:
             if (!wasm_jit_compile_op_i64_arithmetic(
                     comp_ctx, func_ctx, INT_ADD + opcode - WASM_OP_I64_ADD,
                     &frame_ip))
                 return false;
             break;
 
-        case WASM_OP_I64_AND:
-        case WASM_OP_I64_OR:
-        case WASM_OP_I64_XOR:
-            if (!wasm_jit_compile_op_i64_bitwise(
-                    comp_ctx, func_ctx, INT_SHL + opcode - WASM_OP_I64_AND))
-                return false;
-            break;
-
-        case WASM_OP_I64_SHL:
-        case WASM_OP_I64_SHR_S:
-        case WASM_OP_I64_SHR_U:
         case WASM_OP_I64_ROTL:
+            DEF_OP_NUMBERIC(Rotl64);
+            break;
         case WASM_OP_I64_ROTR:
-            if (!wasm_jit_compile_op_i64_shift(
-                    comp_ctx, func_ctx, INT_SHL + opcode - WASM_OP_I64_SHL))
-                return false;
+            DEF_OP_NUMBERIC(Rotr64);
             break;
 
         case WASM_OP_F32_ABS:
+            DEF_OP_MATH(F32Abs);
+            break;
         case WASM_OP_F32_NEG:
+            DEF_OP_MATH(F32Neg);
+            break;
         case WASM_OP_F32_CEIL:
+            DEF_OP_MATH(F32Ceil);
+            break;
         case WASM_OP_F32_FLOOR:
+            DEF_OP_MATH(F32Floor);
+            break;
         case WASM_OP_F32_TRUNC:
+            DEF_OP_MATH(F32Trunc);
+            break;
         case WASM_OP_F32_NEAREST:
+            DEF_OP_MATH(F32Nearest);
+            break;
         case WASM_OP_F32_SQRT:
-            if (!wasm_jit_compile_op_f32_math(comp_ctx, func_ctx,
-                                              FLOAT_ABS + opcode - WASM_OP_F32_ABS))
-                return false;
+            DEF_OP_MATH(F32Sqrt);
             break;
 
         case WASM_OP_F32_ADD:
+            DEF_OP_NUMBERIC(F32Add);
+            break;
         case WASM_OP_F32_SUB:
+            DEF_OP_NUMBERIC(F32Sub);
+            break;
         case WASM_OP_F32_MUL:
+            DEF_OP_NUMBERIC(F32Mul);
+            break;
         case WASM_OP_F32_DIV:
+            DEF_OP_NUMBERIC(F32Div);
+            break;
         case WASM_OP_F32_MIN:
+            DEF_OP_NUMBERIC(F32Min);
+            break;
         case WASM_OP_F32_MAX:
-            if (!wasm_jit_compile_op_f32_arithmetic(comp_ctx, func_ctx,
-                                                    FLOAT_ADD + opcode - WASM_OP_F32_ADD))
-                return false;
+            DEF_OP_NUMBERIC(F32Max);
             break;
 
         case WASM_OP_F32_COPYSIGN:
-            if (!wasm_jit_compile_op_f32_copysign(comp_ctx, func_ctx))
-                return false;
+            DEF_OP_NUMBERIC(F32CopySign);
             break;
 
         case WASM_OP_F64_ABS:
+            DEF_OP_MATH(F64Abs);
+            break;
         case WASM_OP_F64_NEG:
+            DEF_OP_MATH(F64Neg);
+            break;
         case WASM_OP_F64_CEIL:
+            DEF_OP_MATH(F64Ceil);
+            break;
         case WASM_OP_F64_FLOOR:
+            DEF_OP_MATH(F64Floor);
+            break;
         case WASM_OP_F64_TRUNC:
+            DEF_OP_MATH(F64Trunc);
+            break;
         case WASM_OP_F64_NEAREST:
+            DEF_OP_MATH(F64Nearest);
+            break;
         case WASM_OP_F64_SQRT:
-            if (!wasm_jit_compile_op_f64_math(comp_ctx, func_ctx,
-                                              FLOAT_ABS + opcode - WASM_OP_F64_ABS))
-                return false;
+            DEF_OP_MATH(F64Sqrt);
             break;
 
         case WASM_OP_F64_ADD:
-        case WASM_OP_F64_SUB:
-        case WASM_OP_F64_MUL:
-        case WASM_OP_F64_DIV:
-        case WASM_OP_F64_MIN:
-        case WASM_OP_F64_MAX:
-            if (!wasm_jit_compile_op_f64_arithmetic(comp_ctx, func_ctx,
-                                                    FLOAT_ADD + opcode - WASM_OP_F64_ADD))
-                return false;
+            DEF_OP_NUMBERIC(F64Add);
             break;
-
+        case WASM_OP_F64_SUB:
+            DEF_OP_NUMBERIC(F64Sub);
+            break;
+        case WASM_OP_F64_MUL:
+            DEF_OP_NUMBERIC(F64Mul);
+            break;
+        case WASM_OP_F64_DIV:
+            DEF_OP_NUMBERIC(F64Div);
+            break;
+        case WASM_OP_F64_MIN:
+            DEF_OP_NUMBERIC(F64Min);
+            break;
+        case WASM_OP_F64_MAX:
+            DEF_OP_NUMBERIC(F64Max);
+            break;
         case WASM_OP_F64_COPYSIGN:
-            if (!wasm_jit_compile_op_f64_copysign(comp_ctx, func_ctx))
-                return false;
+            DEF_OP_NUMBERIC(F64CopySign);
             break;
 
         case WASM_OP_I32_WRAP_I64:
@@ -749,100 +936,77 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             break;
 
         case WASM_OP_F32_CONVERT_S_I32:
-        case WASM_OP_F32_CONVERT_U_I32:
-            sign = (opcode == WASM_OP_F32_CONVERT_S_I32) ? true : false;
-            if (!wasm_jit_compile_op_f32_convert_i32(comp_ctx, func_ctx, sign))
-                return false;
+            DEF_OP_CONVERT_S(F32_TYPE);
             break;
-
+        case WASM_OP_F32_CONVERT_U_I32:
+            DEF_OP_CONVERT_U(F32_TYPE);
+            break;
         case WASM_OP_F32_CONVERT_S_I64:
+            DEF_OP_CONVERT_S(F32_TYPE);
+            break;
         case WASM_OP_F32_CONVERT_U_I64:
-            sign = (opcode == WASM_OP_F32_CONVERT_S_I64) ? true : false;
-            if (!wasm_jit_compile_op_f32_convert_i64(comp_ctx, func_ctx, sign))
-                return false;
+            DEF_OP_CONVERT_U(F32_TYPE);
             break;
 
         case WASM_OP_F32_DEMOTE_F64:
-            if (!wasm_jit_compile_op_f32_demote_f64(comp_ctx, func_ctx))
-                return false;
+            POP(llvm_value);
+            LLVMOPFPTrunc(llvm_value, F32_TYPE);
+            PUSH(llvm_value);
             break;
 
         case WASM_OP_F64_CONVERT_S_I32:
-        case WASM_OP_F64_CONVERT_U_I32:
-            sign = (opcode == WASM_OP_F64_CONVERT_S_I32) ? true : false;
-            if (!wasm_jit_compile_op_f64_convert_i32(comp_ctx, func_ctx, sign))
-                return false;
+            DEF_OP_CONVERT_S(F64_TYPE);
             break;
-
+        case WASM_OP_F64_CONVERT_U_I32:
+            DEF_OP_CONVERT_U(F64_TYPE);
+            break;
         case WASM_OP_F64_CONVERT_S_I64:
+            DEF_OP_CONVERT_S(F64_TYPE);
+            break;
         case WASM_OP_F64_CONVERT_U_I64:
-            sign = (opcode == WASM_OP_F64_CONVERT_S_I64) ? true : false;
-            if (!wasm_jit_compile_op_f64_convert_i64(comp_ctx, func_ctx, sign))
-                return false;
+            DEF_OP_CONVERT_U(F64_TYPE);
             break;
 
         case WASM_OP_F64_PROMOTE_F32:
-            if (!wasm_jit_compile_op_f64_promote_f32(comp_ctx, func_ctx))
-                return false;
+            POP(llvm_value);
+            LLVMOPFPExt(llvm_value, F64_TYPE);
+            PUSH(llvm_value);
             break;
 
         case WASM_OP_I32_REINTERPRET_F32:
-            POP_F32(llvm_value);
-            LLVMOPBitCast(llvm_value, I32_TYPE);
-            PUSH_I32(llvm_value);
+            DEF_OP_REINTERPRET(llvm_value, I32_TYPE);
             break;
 
         case WASM_OP_I64_REINTERPRET_F64:
-            POP_F64(llvm_value);
-            LLVMOPBitCast(llvm_value, I64_TYPE);
-            PUSH_I64(llvm_value);
+            DEF_OP_REINTERPRET(llvm_value, I64_TYPE);
             break;
 
         case WASM_OP_F32_REINTERPRET_I32:
-            POP_I32(llvm_value);
-            LLVMOPBitCast(llvm_value, F32_TYPE);
-            PUSH_F32(llvm_value);
+            DEF_OP_REINTERPRET(llvm_value, F32_TYPE);
             break;
 
         case WASM_OP_F64_REINTERPRET_I64:
-            POP_I64(llvm_value);
-            LLVMOPBitCast(llvm_value, F64_TYPE);
-            PUSH_F64(llvm_value);
+            DEF_OP_REINTERPRET(llvm_value, F64_TYPE);
             break;
 
         case WASM_OP_I32_EXTEND8_S:
-            POP_I32(llvm_value);
-            LLVMOPSIntCast(llvm_value, INT8_TYPE);
-            LLVMOPSExt(llvm_value, I32_TYPE);
-            PUSH_I32(llvm_value);
+            DEF_OP_EXTEND_S(llvm_value, INT8_TYPE, I32_TYPE);
             break;
 
         case WASM_OP_I32_EXTEND16_S:
-            POP_I32(llvm_value);
-            LLVMOPSIntCast(llvm_value, INT16_TYPE);
-            LLVMOPSExt(llvm_value, I32_TYPE);
-            PUSH_I32(llvm_value);
+            DEF_OP_EXTEND_S(llvm_value, INT16_TYPE, I32_TYPE);
             break;
 
         case WASM_OP_I64_EXTEND8_S:
-            POP_I64(llvm_value);
-            LLVMOPSIntCast(llvm_value, INT8_TYPE);
-            LLVMOPSExt(llvm_value, I64_TYPE);
-            PUSH_I64(llvm_value);
+            DEF_OP_EXTEND_S(llvm_value, INT8_TYPE, I64_TYPE);
             break;
 
         case WASM_OP_I64_EXTEND16_S:
-            POP_I64(llvm_value);
-            LLVMOPSIntCast(llvm_value, INT16_TYPE);
-            LLVMOPSExt(llvm_value, I64_TYPE);
-            PUSH_I64(llvm_value);
+            DEF_OP_EXTEND_S(llvm_value, INT16_TYPE, I64_TYPE);
             break;
 
         case WASM_OP_I64_EXTEND32_S:
-            POP_I64(llvm_value);
-            LLVMOPSIntCast(llvm_value, I32_TYPE);
-            LLVMOPSExt(llvm_value, I64_TYPE);
-            PUSH_I64(llvm_value);
+            DEF_OP_EXTEND_S(llvm_value, I32_TYPE, I64_TYPE);
             break;
 
         case WASM_OP_MISC_PREFIX:
@@ -971,21 +1135,7 @@ bool wasm_jit_compile_wasm(WASMModule *module)
         }
     }
 
-    /* Run IR optimization before feeding in ORCJIT and AOT codegen */
-    // if (1)
-    // {
-    //     /* Run passes for AOT/JIT mode.
-    //        TODO: Apply these passes in the do_ir_transform callback of
-    //        TransformLayer when compiling each jit function, so as to
-    //        speedup the launch process. Now there are two issues in the
-    //        JIT: one is memory leak in do_ir_transform, the other is
-    //        possible core dump. */
-    //     wasm_jit_apply_llvm_new_pass_manager(comp_ctx, comp_ctx->module);
-
-    //     /* Run specific passes for AOT indirect mode in last since general
-    //        optimization may create some intrinsic function calls like
-    //        llvm.memset, so let's remove these function calls here. */
-    // }
+    wasm_jit_apply_llvm_new_pass_manager(comp_ctx, comp_ctx->module);
 
     LLVMErrorRef err;
     LLVMOrcJITDylibRef orc_main_dylib;

@@ -11,15 +11,10 @@ print_help()
 {
     printf("Usage: iwasm [-options] wasm_file [args...]\n");
     printf("options:\n");
-    printf("  -f|--function name       Specify a function name of the module to run rather\n"
-           "                           than main\n");
     printf("  -v=n                     Set log verbose level (0 to 5, default is 2) larger\n"
            "                           level with more log\n");
     printf("  --stack-size=n           Set maximum stack size in bytes, default is 64 KB\n");
-    printf("  --heap-size=n            Set maximum heap size in bytes, default is 16 KB\n");
-    printf("  --repl                   Start a very simple REPL (read-eval-print-loop) mode\n"
-           "                           that runs commands in the form of \"FUNC ARG...\"\n");
-#if WASM_ENABLE_LIBC_WASI != 0
+    printf("  --exectution-stack-size=nSet maximum exectution stack size in bytes, default is 64 KB\n");
     printf("  --env=<env>              Pass wasi environment variables with \"key=value\"\n");
     printf("                           to the program, for example:\n");
     printf("                             --env=\"key1=value1\" --env=\"key2=value2\"\n");
@@ -35,7 +30,6 @@ print_help()
     printf("                           --allow-resolve=example.com # allow the lookup of the specific domain\n");
     printf("                           --allow-resolve=*.example.com # allow the lookup of all subdomains\n");
     printf("                           --allow-resolve=* # allow any lookup\n");
-#endif
     printf("  --version                Show version information\n");
     return 1;
 }
@@ -47,7 +41,6 @@ split_string(char *str, int *count)
     char *p;
     int idx = 0;
 
-    /* split string and append tokens to 'res' */
     do
     {
         p = strtok(str, " ");
@@ -62,11 +55,6 @@ split_string(char *str, int *count)
         res[idx++] = p;
     } while (p);
 
-    /**
-     * Due to the function name,
-     * res[0] might contain a '\' to indicate a space
-     * func\name -> func name
-     */
     p = strchr(res[0], '\\');
     while (p)
     {
@@ -135,8 +123,8 @@ int main(int argc, char *argv[])
     bool is_repl_mode = false;
     int log_verbose_level = 2;
     char *wasm_file = NULL;
-    uint32 value_stack_size = 1024;
-    uint32 exectution_stack_size = 1024;
+    uint32 value_stack_size = 1024 * 16;
+    uint32 exectution_stack_size = 1024 * 16;
     for (argc--, argv++; argc > 0 && argv[0][0] == '-'; argc--, argv++)
     {
         if (!strncmp(argv[0], "-v=", 3))
@@ -155,8 +143,12 @@ int main(int argc, char *argv[])
                 return print_help();
             value_stack_size = atoi(argv[0] + 13);
         }
-
-#if WASM_ENABLE_LIBC_WASI != 0
+        else if (!strncmp(argv[0], "--exectution-stack-size=", 24))
+        {
+            if (argv[0][24] == '\0')
+                return print_help();
+            value_stack_size = atoi(argv[0] + 24);
+        }
         else if (!strncmp(argv[0], "--dir=", 6))
         {
             if (argv[0][6] == '\0')
@@ -188,10 +180,8 @@ int main(int argc, char *argv[])
                    tmp_env);
             return print_help();
         }
-        /* TODO: parse the configuration file via --addr-pool-file */
         else if (!strncmp(argv[0], "--addr-pool=", strlen("--addr-pool=")))
         {
-            /* like: --addr-pool=100.200.244.255/30 */
             char *token = NULL;
 
             if ('\0' == argv[0][12])
@@ -224,7 +214,6 @@ int main(int argc, char *argv[])
             }
             ns_lookup_pool[ns_lookup_pool_size++] = argv[0] + 16;
         }
-#endif /* WASM_ENABLE_LIBC_WASI */
         else
             return print_help();
     }

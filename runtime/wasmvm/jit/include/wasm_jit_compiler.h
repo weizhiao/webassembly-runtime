@@ -3,6 +3,7 @@
 
 #include "wasm_jit.h"
 #include "wasm_jit_llvm.h"
+#include "wasm_llvm_opcode.h"
 
 typedef enum IntArithmetic
 {
@@ -14,43 +15,6 @@ typedef enum IntArithmetic
     INT_REM_S,
     INT_REM_U
 } IntArithmetic;
-
-typedef enum IntBitwise
-{
-    INT_AND = 0,
-    INT_OR,
-    INT_XOR,
-} IntBitwise;
-
-typedef enum IntShift
-{
-    INT_SHL = 0,
-    INT_SHR_S,
-    INT_SHR_U,
-    INT_ROTL,
-    INT_ROTR
-} IntShift;
-
-typedef enum FloatMath
-{
-    FLOAT_ABS = 0,
-    FLOAT_NEG,
-    FLOAT_CEIL,
-    FLOAT_FLOOR,
-    FLOAT_TRUNC,
-    FLOAT_NEAREST,
-    FLOAT_SQRT
-} FloatMath;
-
-typedef enum FloatArithmetic
-{
-    FLOAT_ADD = 0,
-    FLOAT_SUB,
-    FLOAT_MUL,
-    FLOAT_DIV,
-    FLOAT_MIN,
-    FLOAT_MAX,
-} FloatArithmetic;
 
 #define DROP() func_ctx->value_stack--
 
@@ -127,13 +91,13 @@ typedef enum FloatArithmetic
 #define INT8_TYPE comp_ctx->basic_types.int8_type
 #define INT16_TYPE comp_ctx->basic_types.int16_type
 #define MD_TYPE comp_ctx->basic_types.meta_data_type
-#define INT8_PTR_TYPE comp_ctx->basic_types.int8_ptr_type
+#define INT8_TYPE_PTR comp_ctx->basic_types.int8_ptr_type
 #define INT8_PPTR_TYPE comp_ctx->basic_types.int8_pptr_type
-#define INT16_PTR_TYPE comp_ctx->basic_types.int16_ptr_type
-#define INT32_PTR_TYPE comp_ctx->basic_types.int32_ptr_type
-#define INT64_PTR_TYPE comp_ctx->basic_types.int64_ptr_type
-#define F32_PTR_TYPE comp_ctx->basic_types.float32_ptr_type
-#define F64_PTR_TYPE comp_ctx->basic_types.float64_ptr_type
+#define INT16_TYPE_PTR comp_ctx->basic_types.int16_ptr_type
+#define I32_TYPE_PTR comp_ctx->basic_types.int32_ptr_type
+#define I64_TYPE_PTR comp_ctx->basic_types.int64_ptr_type
+#define F32_TYPE_PTR comp_ctx->basic_types.float32_ptr_type
+#define F64_TYPE_PTR comp_ctx->basic_types.float64_ptr_type
 
 #define I32_CONST(v) LLVMConstInt(I32_TYPE, v, true)
 #define I64_CONST(v) LLVMConstInt(I64_TYPE, v, true)
