@@ -227,7 +227,7 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
     ModulePassManager MPM;
 
     const char *Passes =
-        "mem2reg,instcombine,simplifycfg,jump-threading,indvars";
+        "mem2reg,instcombine,simplifycfg,jump-threading,loop-vectorize,indvars";
     ExitOnErr(PB.parsePassPipeline(MPM, Passes));
     MPM.run(*M, MAM);
 }

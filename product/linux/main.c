@@ -69,45 +69,6 @@ split_string(char *str, int *count)
     return res;
 }
 
-static void *
-app_instance_repl(WASMModule *module_inst)
-{
-    char *cmd = NULL;
-    size_t len = 0;
-    ssize_t n;
-
-    while ((printf("webassembly> "), fflush(stdout),
-            n = getline(&cmd, &len, stdin)) != -1)
-    {
-        if (cmd[n - 1] == '\n')
-        {
-            if (n == 1)
-                continue;
-            else
-                cmd[n - 1] = '\0';
-        }
-        if (!strcmp(cmd, "__exit__"))
-        {
-            printf("exit repl mode\n");
-            break;
-        }
-        app_argv = split_string(cmd, &app_argc);
-        if (app_argv == NULL)
-        {
-            LOG_ERROR("Wasm prepare param failed: split string failed.\n");
-            break;
-        }
-        if (app_argc != 0)
-        {
-            execute_func(module_inst, app_argv[0],
-                         app_argc - 1, app_argv + 1);
-        }
-        free(app_argv);
-    }
-    free(cmd);
-    return NULL;
-}
-
 int main(int argc, char *argv[])
 {
     wasm_runtime_init_env();

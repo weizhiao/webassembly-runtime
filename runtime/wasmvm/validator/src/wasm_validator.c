@@ -875,18 +875,17 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 #if WASM_ENABLE_JIT != 0
             ADD_EXTINFO(local_idx);
 #endif
-            if (local_offset < 0x80)
+            if (local_offset < 0xFF)
             {
-                *p_org++ = EXT_OP_GET_LOCAL_FAST;
-
                 if (is_32bit_type(local_type))
                 {
-                    *p_org++ = (uint8)local_offset;
+                    *p_org++ = EXT_OP_GET_LOCAL_FAST;
                 }
                 else
                 {
-                    *p_org++ = (uint8)(local_offset | 0x80);
+                    *p_org++ = EXT_OP_GET_LOCAL_FAST_64;
                 }
+                *p_org++ = (uint8)local_offset;
                 while (p_org < p)
                 {
                     *p_org++ = WASM_OP_NOP;
@@ -903,17 +902,17 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 #if WASM_ENABLE_JIT != 0
             ADD_EXTINFO(local_idx);
 #endif
-            if (local_offset < 0x80)
+            if (local_offset < 0xFF)
             {
-                *p_org++ = EXT_OP_SET_LOCAL_FAST;
                 if (is_32bit_type(local_type))
                 {
-                    *p_org++ = (uint8)local_offset;
+                    *p_org++ = EXT_OP_SET_LOCAL_FAST;
                 }
                 else
                 {
-                    *p_org++ = (uint8)(local_offset | 0x80);
+                    *p_org++ = EXT_OP_SET_LOCAL_FAST_64;
                 }
+                *p_org++ = (uint8)local_offset;
                 while (p_org < p)
                 {
                     *p_org++ = WASM_OP_NOP;
@@ -933,17 +932,17 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
             ADD_EXTINFO(local_idx);
 #endif
 
-            if (local_offset < 0x80)
+            if (local_offset < 0xFF)
             {
-                *p_org++ = EXT_OP_TEE_LOCAL_FAST;
                 if (is_32bit_type(local_type))
                 {
-                    *p_org++ = (uint8)local_offset;
+                    *p_org++ = EXT_OP_TEE_LOCAL_FAST;
                 }
                 else
                 {
-                    *p_org++ = (uint8)(local_offset | 0x80);
+                    *p_org++ = EXT_OP_TEE_LOCAL_FAST_64;
                 }
+                *p_org++ = (uint8)local_offset;
                 while (p_org < p)
                 {
                     *p_org++ = WASM_OP_NOP;
@@ -964,12 +963,31 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
             global_type = module->globals[global_idx].type;
 
-            PUSH_TYPE(global_type);
-
-            if (global_type == VALUE_TYPE_I64 || global_type == VALUE_TYPE_F64)
+            // 针对global0特殊优化
+            if (global_idx == 0)
             {
-                *p_org = WASM_OP_GET_GLOBAL_64;
+                if (is_32bit_type(global_type))
+                {
+                    *p_org++ = EXT_OP_GET_GLOBAL;
+                }
+                else
+                {
+                    *p_org++ = EXT_OP_GET_GLOBAL_64;
+                }
+                while (p_org < p)
+                {
+                    *p_org++ = WASM_OP_NOP;
+                }
             }
+            else
+            {
+                if (is_64bit_type(global_type))
+                {
+                    *p_org = WASM_OP_GET_GLOBAL_64;
+                }
+            }
+
+            PUSH_TYPE(global_type);
             break;
         }
 
@@ -997,9 +1015,28 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
             POP_TYPE(global_type);
 
-            if (global_type == VALUE_TYPE_I64 || global_type == VALUE_TYPE_F64)
+            // 针对global0特殊优化
+            if (global_idx == 0)
             {
-                *p_org = WASM_OP_SET_GLOBAL_64;
+                if (is_32bit_type(global_type))
+                {
+                    *p_org++ = EXT_OP_SET_GLOBAL;
+                }
+                else
+                {
+                    *p_org++ = EXT_OP_SET_GLOBAL_64;
+                }
+                while (p_org < p)
+                {
+                    *p_org++ = WASM_OP_NOP;
+                }
+            }
+            else
+            {
+                if (is_64bit_type(global_type))
+                {
+                    *p_org = WASM_OP_SET_GLOBAL_64;
+                }
             }
             break;
         }

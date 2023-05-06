@@ -124,7 +124,8 @@
         "wasm_llvm_opcode.h": "c",
         "config.h": "c",
         "platform_internal.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "any": "c"
     },
     "cmake.configureOnOpen": true
 }

@@ -34,7 +34,7 @@ typedef enum WASMOpcode
     WASM_OP_UNUSED_0x16 = 0x16,
     WASM_OP_UNUSED_0x17 = 0x17,
     WASM_OP_UNUSED_0x18 = 0x18,
-    WASM_OP_UNUSED_0x19 = 0x19,
+    EXT_OP_SET_GLOBAL = 0x19,
 
     /* parametric instructions */
     WASM_OP_DROP = 0x1a,     /* drop */
@@ -53,7 +53,7 @@ typedef enum WASMOpcode
 
     WASM_OP_TABLE_GET = 0x25, /* table.get */
     WASM_OP_TABLE_SET = 0x26, /* table.set */
-    WASM_OP_UNUSED_0x27 = 0x27,
+    EXT_OP_SET_GLOBAL_64 = 0x27,
 
     /* memory instructions */
     WASM_OP_I32_LOAD = 0x28,     /* i32.load */
@@ -244,9 +244,9 @@ typedef enum WASMOpcode
     EXT_OP_SET_LOCAL_FAST = 0xc9,
     EXT_OP_TEE_LOCAL_FAST = 0xca,
     EXT_OP_TEE_LOCAL_FAST_64 = 0xcb,
-    EXT_OP_COPY_STACK_TOP = 0xcc,
-    EXT_OP_COPY_STACK_TOP_I64 = 0xcd,
-    EXT_OP_COPY_STACK_VALUES = 0xce,
+    EXT_OP_GET_LOCAL_FAST_64 = 0xcc,
+    EXT_OP_GET_GLOBAL = 0xcd,
+    EXT_OP_GET_GLOBAL_64 = 0xce,
 
     WASM_OP_IMPDEP = 0xcf,
 
@@ -691,7 +691,7 @@ typedef enum WASMAtomicEXTOpcode
         HANDLE_OPCODE(WASM_OP_UNUSED_0x16),          /* 0x16 */ \
         HANDLE_OPCODE(WASM_OP_UNUSED_0x17),          /* 0x17 */ \
         HANDLE_OPCODE(WASM_OP_UNUSED_0x18),          /* 0x18 */ \
-        HANDLE_OPCODE(WASM_OP_UNUSED_0x19),          /* 0x19 */ \
+        HANDLE_OPCODE(EXT_OP_SET_GLOBAL),            /* 0x19 */ \
         HANDLE_OPCODE(WASM_OP_DROP),                 /* 0x1a */ \
         HANDLE_OPCODE(WASM_OP_SELECT),               /* 0x1b */ \
         HANDLE_OPCODE(WASM_OP_SELECT_T),             /* 0x1c */ \
@@ -705,7 +705,7 @@ typedef enum WASMAtomicEXTOpcode
         HANDLE_OPCODE(WASM_OP_SET_GLOBAL),           /* 0x24 */ \
         HANDLE_OPCODE(WASM_OP_TABLE_GET),            /* 0x25 */ \
         HANDLE_OPCODE(WASM_OP_TABLE_SET),            /* 0x26 */ \
-        HANDLE_OPCODE(WASM_OP_UNUSED_0x27),          /* 0x27 */ \
+        HANDLE_OPCODE(EXT_OP_SET_GLOBAL_64),         /* 0x27 */ \
         HANDLE_OPCODE(WASM_OP_I32_LOAD),             /* 0x28 */ \
         HANDLE_OPCODE(WASM_OP_I64_LOAD),             /* 0x29 */ \
         HANDLE_OPCODE(WASM_OP_F32_LOAD),             /* 0x2a */ \
@@ -870,9 +870,9 @@ typedef enum WASMAtomicEXTOpcode
         HANDLE_OPCODE(EXT_OP_SET_LOCAL_FAST),        /* 0xc9 */ \
         HANDLE_OPCODE(EXT_OP_TEE_LOCAL_FAST),        /* 0xca */ \
         HANDLE_OPCODE(EXT_OP_TEE_LOCAL_FAST_64),     /* 0xcb */ \
-        HANDLE_OPCODE(EXT_OP_COPY_STACK_TOP),        /* 0xcc */ \
-        HANDLE_OPCODE(EXT_OP_COPY_STACK_TOP_I64),    /* 0xcd */ \
-        HANDLE_OPCODE(EXT_OP_COPY_STACK_VALUES),     /* 0xce */ \
+        HANDLE_OPCODE(EXT_OP_GET_LOCAL_FAST_64),     /* 0xcc */ \
+        HANDLE_OPCODE(EXT_OP_GET_GLOBAL),            /* 0xcd */ \
+        HANDLE_OPCODE(EXT_OP_GET_GLOBAL_64),         /* 0xce */ \
         HANDLE_OPCODE(WASM_OP_UNUSED_0x06),          /* 0xcf */ \
         HANDLE_OPCODE(WASM_OP_REF_NULL),             /* 0xd0 */ \
         HANDLE_OPCODE(WASM_OP_REF_IS_NULL),          /* 0xd1 */ \

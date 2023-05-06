@@ -116,7 +116,7 @@ static bool jit_call_indirect(JITCompContext *comp_ctx, JITFuncContext *func_ctx
 
 static bool
 jit_call_direct(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
-                WASMType *wasm_type, JITFuncType *jit_func_type, LLVMValueRef llvm_func_idx, LLVMValueRef *llvm_param_values, LLVMValueRef *llvm_ret_values)
+                WASMType *wasm_type, JITFuncType *jit_func_type, LLVMValueRef llvm_func_idx, LLVMValueRef *llvm_param_values, LLVMValueRef *llvm_ret_values, uint32 func_idx)
 {
     LLVMValueRef llvm_ret, ext_ret, llvm_func_ptr, llvm_func;
     LLVMBuilderRef builder = comp_ctx->builder;
@@ -127,28 +127,38 @@ jit_call_direct(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     uint32 ext_ret_count = result_count > 1 ? result_count - 1 : 0;
     char buf[32];
 
-    LLVMBuildGEP(llvm_func_ptr, OPQ_PTR_TYPE,
-                 func_ctx->func_ptrs, llvm_func_idx, "func_ptr_tmp");
-
-    llvm_func_ptr = LLVMBuildLoad2(comp_ctx->builder, OPQ_PTR_TYPE, llvm_func_ptr,
-                                   "func_ptr");
-
     llvm_func_type = jit_func_type->llvm_func_type;
-    llvm_func_ptr_type = LLVMPointerType(llvm_func_type, 0);
 
-    if (!(llvm_func = LLVMBuildBitCast(comp_ctx->builder, llvm_func_ptr,
-                                       llvm_func_ptr_type, "indirect_func")))
+    if (func_idx == -1)
     {
-        wasm_jit_set_last_error("llvm build bit cast failed.");
-        return false;
+        LLVMBuildGEP(llvm_func_ptr, OPQ_PTR_TYPE,
+                     func_ctx->func_ptrs, llvm_func_idx, "func_ptr_tmp");
+
+        llvm_func_ptr = LLVMBuildLoad2(comp_ctx->builder, OPQ_PTR_TYPE, llvm_func_ptr,
+                                       "func_ptr");
+        llvm_func_ptr_type = LLVMPointerType(llvm_func_type, 0);
+
+        if (!(llvm_func = LLVMBuildBitCast(comp_ctx->builder, llvm_func_ptr,
+                                           llvm_func_ptr_type, "indirect_func")))
+        {
+            wasm_jit_set_last_error("llvm build bit cast failed.");
+            return false;
+        }
+
+        if (!(llvm_ret = LLVMBuildCall2(comp_ctx->builder, llvm_func_type, llvm_func,
+                                        llvm_param_values, param_count + 1 + ext_ret_count,
+                                        result_count > 0 ? "ret" : "")))
+        {
+            wasm_jit_set_last_error("llvm build call failed.");
+            return false;
+        }
     }
-
-    if (!(llvm_ret = LLVMBuildCall2(comp_ctx->builder, llvm_func_type, llvm_func,
-                                    llvm_param_values, param_count + 1 + ext_ret_count,
-                                    result_count > 0 ? "ret" : "")))
+    else
     {
-        wasm_jit_set_last_error("llvm build call failed.");
-        return false;
+        llvm_func = comp_ctx->jit_func_ctxes[func_idx]->func;
+        llvm_ret = LLVMBuildCall2(comp_ctx->builder, llvm_func_type, llvm_func,
+                                  llvm_param_values, param_count + 1 + ext_ret_count,
+                                  result_count > 0 ? "ret" : "");
     }
 
     if (wasm_type->result_count > 0)
@@ -253,7 +263,7 @@ bool wasm_jit_compile_op_call(WASMModule *wasm_module, JITCompContext *comp_ctx,
     }
     else
     {
-        ret = jit_call_direct(comp_ctx, func_ctx, wasm_func->func_type, jit_func_type, llvm_func_idx, llvm_param_values, llvm_ret_values);
+        ret = jit_call_direct(comp_ctx, func_ctx, wasm_func->func_type, jit_func_type, llvm_func_idx, llvm_param_values, llvm_ret_values, func_idx - import_func_count);
     }
     for (i = 0; i < result_count; i++)
         PUSH(llvm_ret_values[i]);
@@ -597,7 +607,7 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
     LLVMPositionBuilderAtEnd(comp_ctx->builder, block_call_non_import);
 
     /* Load function pointer */
-    jit_call_direct(comp_ctx, func_ctx, wasm_type, jit_func_type, llvm_func_idx, llvm_param_values, llvm_ret_values);
+    jit_call_direct(comp_ctx, func_ctx, wasm_type, jit_func_type, llvm_func_idx, llvm_param_values, llvm_ret_values, -1);
 
     block_curr = LLVMGetInsertBlock(comp_ctx->builder);
     for (i = 0; i < result_count; i++)

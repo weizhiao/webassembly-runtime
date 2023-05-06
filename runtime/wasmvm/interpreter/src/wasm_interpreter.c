@@ -1006,11 +1006,14 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(EXT_OP_GET_LOCAL_FAST)
             {
                 local_offset = *frame_ip++;
-                if (local_offset & 0x80)
-                    PUSH_I64(
-                        GET_I64_FROM_ADDR(frame_lp + (local_offset & 0x7F)));
-                else
-                    PUSH_I32(GET_I32_FROM_ADDR(frame_lp + local_offset));
+                PUSH_I32(GET_I32_FROM_ADDR(frame_lp + local_offset));
+                HANDLE_OP_END();
+            }
+
+            HANDLE_OP(EXT_OP_GET_LOCAL_FAST_64)
+            {
+                local_offset = *frame_ip++;
+                PUSH_I64(GET_I64_FROM_ADDR(frame_lp + local_offset));
                 HANDLE_OP_END();
             }
 
@@ -1039,12 +1042,14 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(EXT_OP_SET_LOCAL_FAST)
             {
                 local_offset = *frame_ip++;
-                if (local_offset & 0x80)
-                    PUT_I64_TO_ADDR(
-                        frame_lp + (local_offset & 0x7F),
-                        POP_I64());
-                else
-                    PUT_I32_TO_ADDR(frame_lp + local_offset, POP_I32());
+                PUT_I32_TO_ADDR(frame_lp + local_offset, POP_I32());
+                HANDLE_OP_END();
+            }
+
+            HANDLE_OP(EXT_OP_SET_LOCAL_FAST_64)
+            {
+                local_offset = *frame_ip++;
+                PUT_I64_TO_ADDR(frame_lp + local_offset, POP_I64());
                 HANDLE_OP_END();
             }
 
@@ -1073,14 +1078,18 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(EXT_OP_TEE_LOCAL_FAST)
             {
                 local_offset = *frame_ip++;
-                if (local_offset & 0x80)
-                    PUT_I64_TO_ADDR(
-                        frame_lp + (local_offset & 0x7F),
-                        GET_I64_FROM_ADDR(frame_sp - 2));
-                else
-                    PUT_I32_TO_ADDR(
-                        frame_lp + local_offset,
-                        GET_I32_FROM_ADDR(frame_sp - 1));
+                PUT_I32_TO_ADDR(
+                    frame_lp + local_offset,
+                    GET_I32_FROM_ADDR(frame_sp - 1));
+                HANDLE_OP_END();
+            }
+
+            HANDLE_OP(EXT_OP_TEE_LOCAL_FAST_64)
+            {
+                local_offset = *frame_ip++;
+                PUT_I64_TO_ADDR(
+                    frame_lp + local_offset,
+                    GET_I64_FROM_ADDR(frame_sp - 2));
                 HANDLE_OP_END();
             }
 
@@ -1093,12 +1102,24 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
+            HANDLE_OP(EXT_OP_GET_GLOBAL)
+            {
+                PUSH_I32(GET_I32_FROM_ADDR(global_data));
+                HANDLE_OP_END();
+            }
+
             HANDLE_OP(WASM_OP_GET_GLOBAL_64)
             {
                 read_leb_uint32(frame_ip, frame_ip_end, global_idx);
                 global = globals + global_idx;
                 global_addr = get_global_addr(global_data, global);
                 PUSH_I64(GET_I64_FROM_ADDR(global_addr));
+                HANDLE_OP_END();
+            }
+
+            HANDLE_OP(EXT_OP_GET_GLOBAL_64)
+            {
+                PUSH_I64(GET_I64_FROM_ADDR(global_data));
                 HANDLE_OP_END();
             }
 
@@ -1111,12 +1132,24 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
+            HANDLE_OP(EXT_OP_SET_GLOBAL)
+            {
+                PUT_I32_TO_ADDR(global_data, POP_I32());
+                HANDLE_OP_END();
+            }
+
             HANDLE_OP(WASM_OP_SET_GLOBAL_64)
             {
                 read_leb_uint32(frame_ip, frame_ip_end, global_idx);
                 global = globals + global_idx;
                 global_addr = get_global_addr(global_data, global);
                 PUT_I64_TO_ADDR(global_addr, POP_I64());
+                HANDLE_OP_END();
+            }
+
+            HANDLE_OP(EXT_OP_SET_GLOBAL_64)
+            {
+                PUT_I64_TO_ADDR(global_data, POP_I64());
                 HANDLE_OP_END();
             }
 
@@ -2485,13 +2518,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(WASM_OP_UNUSED_0x16)
             HANDLE_OP(WASM_OP_UNUSED_0x17)
             HANDLE_OP(WASM_OP_UNUSED_0x18)
-            HANDLE_OP(WASM_OP_UNUSED_0x19)
-            HANDLE_OP(WASM_OP_UNUSED_0x27)
-            HANDLE_OP(EXT_OP_SET_LOCAL_FAST_64)
-            HANDLE_OP(EXT_OP_TEE_LOCAL_FAST_64)
-            HANDLE_OP(EXT_OP_COPY_STACK_TOP)
-            HANDLE_OP(EXT_OP_COPY_STACK_TOP_I64)
-            HANDLE_OP(EXT_OP_COPY_STACK_VALUES)
             {
                 wasm_set_exception(module, "unsupported opcode");
                 goto got_exception;

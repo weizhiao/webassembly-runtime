@@ -174,32 +174,24 @@ extern "C"
     typedef struct JITCompContext
     {
 
-        /* LLVM variables required to emit LLVM IR */
         LLVMContextRef context;
         LLVMBuilderRef builder;
         LLVMTargetMachineRef target_machine;
         char *target_cpu;
         char target_arch[16];
 
-        /* required by JIT */
         LLVMOrcLLLazyJITRef orc_jit;
         LLVMOrcThreadSafeContextRef orc_thread_safe_context;
 
         LLVMModuleRef module;
 
-        /* Disable LLVM link time optimization */
-        bool disable_llvm_lto;
-
         uint32 opt_level;
         uint32 size_level;
 
-        /* LLVM floating-point rounding mode metadata */
         LLVMValueRef fp_rounding_mode;
 
-        /* LLVM floating-point exception behavior metadata */
         LLVMValueRef fp_exception_behavior;
 
-        /* LLVM data types */
         JITLLVMTypes basic_types;
         LLVMTypeRef exec_env_type;
         LLVMTypeRef wasm_module_type;
@@ -210,16 +202,10 @@ extern "C"
         uint32 func_ctx_count;
     } JITCompContext;
 
-    bool wasm_jit_compiler_init(void);
-
-    void wasm_jit_compiler_destroy(void);
-
     JITCompContext *
     wasm_jit_create_comp_context(WASMModule *wasm_module);
 
     void wasm_jit_destroy_comp_context(JITCompContext *comp_ctx);
-
-    int32 wasm_jit_get_native_symbol_index(JITCompContext *comp_ctx, const char *symbol);
 
     bool wasm_jit_compile_wasm(WASMModule *module);
 

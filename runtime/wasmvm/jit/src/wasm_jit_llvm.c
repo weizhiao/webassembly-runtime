@@ -843,24 +843,6 @@ fail:
     return ret;
 }
 
-bool wasm_jit_compiler_init(void)
-{
-    /* Initialize LLVM environment */
-
-    LLVMInitializeCore(LLVMGetGlobalPassRegistry());
-    /* Init environment of native for JIT compiler */
-    LLVMInitializeNativeTarget();
-    LLVMInitializeNativeTarget();
-    LLVMInitializeNativeAsmPrinter();
-
-    return true;
-}
-
-void wasm_jit_compiler_destroy(void)
-{
-    LLVMShutdown();
-}
-
 JITCompContext *
 wasm_jit_create_comp_context(WASMModule *wasm_module)
 {

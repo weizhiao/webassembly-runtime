@@ -384,6 +384,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             skip_leb_uint32(frame_ip, frame_ip_end);
             goto get_local;
         case EXT_OP_GET_LOCAL_FAST:
+        case EXT_OP_GET_LOCAL_FAST_64:
             frame_ip++;
         get_local:
             GET_OP_INFO(local_idx);
@@ -403,6 +404,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             skip_leb_uint32(frame_ip, frame_ip_end);
             goto set_local;
         case EXT_OP_SET_LOCAL_FAST:
+        case EXT_OP_SET_LOCAL_FAST_64:
             frame_ip++;
         set_local:
             GET_OP_INFO(local_idx);
@@ -423,6 +425,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             skip_leb_uint32(frame_ip, frame_ip_end);
             goto tee_local;
         case EXT_OP_TEE_LOCAL_FAST:
+        case EXT_OP_TEE_LOCAL_FAST_64:
             frame_ip++;
         tee_local:
             GET_OP_INFO(local_idx);
@@ -443,15 +446,24 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
         case WASM_OP_GET_GLOBAL:
         case WASM_OP_GET_GLOBAL_64:
             read_leb_uint32(frame_ip, frame_ip_end, global_idx);
+            goto get_global;
+        case EXT_OP_GET_GLOBAL:
+        case EXT_OP_GET_GLOBAL_64:
+            global_idx = 0;
+        get_global:
             GET_GLOBAL_LLVMPTR(global_idx);
             llvm_value = LLVMBuildLoad2(comp_ctx->builder, TO_LLVM_TYPE(value_type), llvm_ptr, "global");
             LLVMSetAlignment(llvm_value, 4);
             PUSH(llvm_value);
             break;
-
         case WASM_OP_SET_GLOBAL:
         case WASM_OP_SET_GLOBAL_64:
             read_leb_uint32(frame_ip, frame_ip_end, global_idx);
+            goto set_global;
+        case EXT_OP_SET_GLOBAL:
+        case EXT_OP_SET_GLOBAL_64:
+            global_idx = 0;
+        set_global:
             GET_GLOBAL_LLVMPTR(global_idx);
             POP(llvm_value);
             if (!(res = LLVMBuildStore(comp_ctx->builder, llvm_value, llvm_ptr)))
