@@ -634,7 +634,7 @@ word_copy(uint32 *dest, uint32 *src, unsigned num)
 }
 
 static inline WASMFuncFrame *
-ALLOC_FRAME(WASMExecEnv *exec_env, WASMFuncFrame *prev_frame)
+ALLOC_FRAME(WASMExecEnv *exec_env)
 {
     if (exec_env->exectution_stack.top + sizeof(WASMFuncFrame) >= exec_env->exectution_stack.top_boundary)
     {
@@ -644,7 +644,6 @@ ALLOC_FRAME(WASMExecEnv *exec_env, WASMFuncFrame *prev_frame)
     }
 
     WASMFuncFrame *frame = (WASMFuncFrame *)exec_env->exectution_stack.top;
-    frame->prev_frame = prev_frame;
 
     exec_env->exectution_stack.top += sizeof(WASMFuncFrame);
 
@@ -746,7 +745,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
     WASMFunction *cur_func = function;
 
     // 初始化栈帧
-    WASMFuncFrame *frame = ALLOC_FRAME(exec_env, prev_frame);
+    WASMFuncFrame *frame = ALLOC_FRAME(exec_env);
     frame->lp = value_stack - cur_func->param_cell_num;
     frame->sp = value_stack + cur_func->local_cell_num;
     frame->ip = (uint8 *)cur_func->func_ptr;
@@ -794,7 +793,12 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 goto got_exception;
             }
 
-            HANDLE_OP(WASM_OP_NOP) { HANDLE_OP_END(); }
+            HANDLE_OP(WASM_OP_NOP)
+            {
+                while (*frame_ip == WASM_OP_NOP)
+                    frame_ip++;
+                HANDLE_OP_END();
+            }
 
             HANDLE_OP(WASM_OP_BLOCK)
             {
@@ -885,7 +889,26 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 {
                     *prev_frame->sp++ = frame_sp[i];
                 }
-                goto return_func;
+            return_func:
+            {
+                FREE_FRAME(exec_env, frame);
+
+                if (!prev_frame->ip)
+                    /* Called from native. */
+                    return;
+
+                // 恢复栈帧
+                frame = prev_frame;
+                cur_func = frame->function;
+                prev_frame = frame - 1;
+                frame_ip = frame->ip;
+                frame_ip_end = cur_func->code_end;
+                frame_lp = frame->lp;
+                frame_sp = frame->sp;
+                cur_branch_table = frame->cur_branch_table;
+                branch_table = cur_func->branch_table;
+                HANDLE_OP_END();
+            }
             }
 
             HANDLE_OP(WASM_OP_CALL)
@@ -895,7 +918,56 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 frame->function = cur_func;
 
                 cur_func = module->functions + fidx;
-                goto call_func_from_interp;
+            call_func_from_interp:
+            {
+                // 保存函数栈帧
+                frame->ip = frame_ip;
+                frame->sp = frame_sp - cur_func->param_cell_num;
+                frame->lp = frame_lp;
+                frame->cur_branch_table = cur_branch_table;
+
+                prev_frame = frame;
+
+                if (cur_func->func_kind)
+                {
+                    wasm_interp_call_func_native(exec_env, fidx,
+                                                 prev_frame);
+
+                    // 在该情况下只有这些变量发生变化
+                    prev_frame = frame - 1;
+                    cur_func = frame->function;
+                    frame_sp = frame->sp;
+
+                    if (memory)
+                        linear_mem_size = num_bytes_per_page * memory->cur_page_count;
+                    if (wasm_get_exception(module))
+                        goto got_exception;
+                }
+                else
+                {
+
+                    if (!(frame = ALLOC_FRAME(exec_env)))
+                    {
+                        frame = prev_frame;
+                        goto got_exception;
+                    }
+
+                    frame_lp = frame->lp = frame_sp - cur_func->param_cell_num;
+
+                    frame_ip = (uint8 *)cur_func->func_ptr;
+                    frame_ip_end = cur_func->code_end;
+
+                    frame_sp = frame->sp = frame_sp + cur_func->local_cell_num;
+
+                    // 切换跳转表
+                    cur_branch_table = cur_func->branch_table;
+                    branch_table = cur_func->branch_table;
+
+                    memset(frame_lp + cur_func->param_cell_num, 0,
+                           (uint32)(cur_func->local_cell_num * 4));
+                }
+                HANDLE_OP_END();
+            }
             }
 
             HANDLE_OP(WASM_OP_CALL_INDIRECT)
@@ -2528,81 +2600,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             continue;
 #endif
 
-        call_func_from_interp:
-        {
-            // 保存函数栈帧
-            frame->ip = frame_ip;
-            frame->sp = frame_sp - cur_func->param_cell_num;
-            frame->lp = frame_lp;
-            frame->cur_branch_table = cur_branch_table;
-
-            prev_frame = frame;
-
-            if (cur_func->func_kind)
-            {
-                wasm_interp_call_func_native(exec_env, fidx,
-                                             prev_frame);
-
-                // 在该情况下只有这些变量发生变化
-                prev_frame = frame->prev_frame;
-                cur_func = frame->function;
-                frame_sp = frame->sp;
-
-                /* update memory size, no need to update memory ptr as
-                   it isn't changed in wasm_enlarge_memory */
-
-                if (memory)
-                    linear_mem_size = num_bytes_per_page * memory->cur_page_count;
-                if (wasm_get_exception(module))
-                    goto got_exception;
-            }
-            else
-            {
-
-                if (!(frame = ALLOC_FRAME(exec_env, prev_frame)))
-                {
-                    frame = prev_frame;
-                    goto got_exception;
-                }
-
-                frame_lp = frame->lp = frame_sp - cur_func->param_cell_num;
-
-                frame_ip = (uint8 *)cur_func->func_ptr;
-                frame_ip_end = cur_func->code_end;
-
-                frame_sp = frame->sp = frame_sp + cur_func->local_cell_num;
-
-                // 切换跳转表
-                cur_branch_table = cur_func->branch_table;
-                branch_table = cur_func->branch_table;
-
-                memset(frame_lp + cur_func->param_cell_num, 0,
-                       (uint32)(cur_func->local_cell_num * 4));
-            }
-            HANDLE_OP_END();
-        }
-
-        return_func:
-        {
-            FREE_FRAME(exec_env, frame);
-
-            if (!prev_frame->ip)
-                /* Called from native. */
-                return;
-
-            // 恢复栈帧
-            frame = prev_frame;
-            cur_func = frame->function;
-            prev_frame = frame->prev_frame;
-            frame_ip = frame->ip;
-            frame_ip_end = cur_func->code_end;
-            frame_lp = frame->lp;
-            frame_sp = frame->sp;
-            cur_branch_table = frame->cur_branch_table;
-            branch_table = cur_func->branch_table;
-            HANDLE_OP_END();
-        }
-
         out_of_bounds:
             wasm_set_exception(module, "out of bounds memory access");
 
@@ -2731,7 +2728,7 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
     }
     argc = function->param_cell_num;
 
-    if (!(frame = ALLOC_FRAME(exec_env, NULL)))
+    if (!(frame = ALLOC_FRAME(exec_env)))
         return;
 
     frame->ip = NULL;
@@ -2750,9 +2747,11 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
 #endif
         break;
     case Native_Func:
+    {
         uint32 func_idx = (uint32)(function - module_inst->functions);
         wasm_interp_call_func_native(exec_env, func_idx, frame);
         break;
+    }
     default:
         break;
     }

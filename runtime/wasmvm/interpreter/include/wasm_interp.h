@@ -5,9 +5,8 @@
 #include "wasm_exception.h"
 #include "wasm_exec_env.h"
 
-typedef struct WASMFuncFrame {
-    struct WASMFuncFrame *prev_frame;
-
+typedef struct WASMFuncFrame
+{
     WASMFunction *function;
 
     uint8 *ip;
@@ -19,10 +18,8 @@ typedef struct WASMFuncFrame {
 
 } WASMFuncFrame;
 
-void
-wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
-                      WASMFunction *function, uint32 argc,
-                      uint32 argv[]);
-
+void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
+                           WASMFunction *function, uint32 argc,
+                           uint32 argv[]);
 
 #endif /* end of _WASM_INTERP_H */

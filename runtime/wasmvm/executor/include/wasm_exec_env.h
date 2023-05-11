@@ -6,13 +6,8 @@
 /* Execution environment */
 typedef struct WASMExecEnv
 {
-    /* Next thread's exec env of a WASM module instance. */
     struct WASMExecEnv *next;
-
-    /* Previous thread's exec env of a WASM module instance. */
     struct WASMExecEnv *prev;
-
-    /* The WASM module instance of current thread */
     WASMModule *module_inst;
 
 #if WASM_ENABLE_JIT != 0
