@@ -155,7 +155,7 @@ typedef struct WASMDataSeg
 typedef struct WASMBranchTable
 {
     uint8 *ip;
-    uint32 stp;
+    uint32 idx;
     uint32 push;
     uint32 pop;
 } WASMBranchTable;

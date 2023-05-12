@@ -664,7 +664,7 @@ FREE_FRAME(WASMExecEnv *exec_env, WASMFuncFrame *frame)
         frame_ip = cur_branch_table->ip;                         \
         word_copy(frame_sp - pop, frame_sp - push, push);        \
         frame_sp = frame_sp - pop + push;                        \
-        cur_branch_table = branch_table + cur_branch_table->stp; \
+        cur_branch_table = branch_table + cur_branch_table->idx; \
     } while (0)
 
 static void
@@ -820,7 +820,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 if (!cond)
                 {
                     frame_ip = cur_branch_table->ip;
-                    cur_branch_table = branch_table + cur_branch_table->stp;
+                    cur_branch_table = branch_table + cur_branch_table->idx;
                 }
                 else
                 {
@@ -832,7 +832,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
             HANDLE_OP(WASM_OP_ELSE)
             {
                 frame_ip = cur_branch_table->ip;
-                cur_branch_table = branch_table + cur_branch_table->stp;
+                cur_branch_table = branch_table + cur_branch_table->idx;
                 HANDLE_OP_END();
             }
 

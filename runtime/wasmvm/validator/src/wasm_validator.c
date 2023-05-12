@@ -105,7 +105,7 @@ wasm_emit_branch_table(WASMLoaderContext *ctx, uint8 opcode, uint32 depth)
     branch_table = ctx->branch_table;
 
     // 目前用于存放指令字节
-    branch_table->stp = opcode;
+    branch_table->idx = opcode;
 
     // 将该跳转指令对应的表索引存入相应控制块拥有的栈中
     frame_csp = ctx->frame_csp - depth - 1;

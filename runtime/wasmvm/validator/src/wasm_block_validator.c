@@ -70,7 +70,7 @@ bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx)
     for (i = 0; i < frame_csp->table_queue_num; i++)
     {
         branch_table = ctx->branch_table_bottom + frame_csp->table_queue_bottom[i];
-        uint32 opcode = branch_table->stp;
+        uint32 opcode = branch_table->idx;
 
         switch (opcode)
         {
@@ -78,15 +78,15 @@ bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx)
         case WASM_OP_BR_IF:
         case WASM_OP_BR_TABLE:
             branch_table->ip = end_addr;
-            branch_table->stp = frame_csp->branch_table_end_idx;
+            branch_table->idx = frame_csp->branch_table_end_idx;
             break;
         case WASM_OP_IF:
             branch_table->ip = frame_csp->else_addr;
-            branch_table->stp = frame_csp->branch_table_else_idx;
+            branch_table->idx = frame_csp->branch_table_else_idx;
             break;
         case WASM_OP_ELSE:
             branch_table->ip = end_addr;
-            branch_table->stp = frame_csp->branch_table_end_idx;
+            branch_table->idx = frame_csp->branch_table_end_idx;
             break;
         default:
             wasm_set_exception(module, "unsupport branch opcode");
