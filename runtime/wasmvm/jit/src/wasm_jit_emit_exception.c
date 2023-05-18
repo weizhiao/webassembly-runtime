@@ -49,7 +49,6 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMTypeRef param_types[2], ret_type, func_type, func_ptr_type;
     LLVMValueRef param_values[2];
 
-    /* Create got_exception block if needed */
     if (!func_ctx->got_exception_block)
     {
         if (!(func_ctx->got_exception_block = LLVMAppendBasicBlockInContext(
@@ -62,7 +61,6 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         LLVMPositionBuilderAtEnd(comp_ctx->builder,
                                  func_ctx->got_exception_block);
 
-        /* Create exection id phi */
         if (!(func_ctx->exception_id_phi = LLVMBuildPhi(
                   comp_ctx->builder, I32_TYPE, "exception_id_phi")))
         {
@@ -70,25 +68,21 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
             return false;
         }
 
-        /* Call wasm_jit_set_exception_with_id() to throw exception */
         param_types[0] = INT8_TYPE_PTR;
         param_types[1] = I32_TYPE;
         ret_type = VOID_TYPE;
 
-        /* Create function type */
         if (!(func_type = LLVMFunctionType(ret_type, param_types, 2, false)))
         {
             wasm_jit_set_last_error("create LLVM function type failed.");
             return false;
         }
 
-        /* Create function type */
         if (!(func_ptr_type = LLVMPointerType(func_type, 0)))
         {
             wasm_jit_set_last_error("create LLVM function type failed.");
             return false;
         }
-        /* Create LLVM function with const function pointer */
         if (!(func_const =
                   I64_CONST((uint64)(uintptr_t)jit_set_exception_with_id)) ||
             !(func = LLVMConstIntToPtr(func_const, func_ptr_type)))
@@ -97,7 +91,6 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
             return false;
         }
 
-        /* Call the wasm_jit_set_exception_with_id() function */
         param_values[0] = func_ctx->wasm_module;
         param_values[1] = func_ctx->exception_id_phi;
         if (!LLVMBuildCall2(comp_ctx->builder, func_type, func, param_values, 2,
@@ -107,23 +100,19 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
             return false;
         }
 
-        /* Create return IR */
         WASMType *wasm_jit_func_type = func_ctx->wasm_func->func_type;
         if (!wasm_jit_build_zero_function_ret(comp_ctx, func_ctx, wasm_jit_func_type))
         {
             return false;
         }
 
-        /* Resume the builder position */
         LLVMPositionBuilderAtEnd(comp_ctx->builder, block_curr);
     }
 
-    /* Add phi incoming value to got_exception block */
     LLVMAddIncoming(func_ctx->exception_id_phi, &exce_id, &block_curr, 1);
 
     if (!is_cond_br)
     {
-        /* not condition br, create br IR */
         if (!LLVMBuildBr(comp_ctx->builder, func_ctx->got_exception_block))
         {
             wasm_jit_set_last_error("llvm build br failed.");
@@ -132,7 +121,6 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     }
     else
     {
-        /* Create condition br */
         if (!LLVMBuildCondBr(comp_ctx->builder, cond_br_if,
                              func_ctx->got_exception_block,
                              cond_br_else_block))
@@ -140,7 +128,6 @@ bool wasm_jit_emit_exception(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
             wasm_jit_set_last_error("llvm build cond br failed.");
             return false;
         }
-        /* Start to translate the else block */
         LLVMPositionBuilderAtEnd(comp_ctx->builder, cond_br_else_block);
     }
 

@@ -106,7 +106,6 @@ execute_post_instantiate_functions(WASMModule *module)
         goto fail;
     }
 
-    /* Execute start function for both main insance and sub instance */
     if (start_func && !wasm_call_function(exec_env, start_func, 0, NULL))
     {
         goto fail;
@@ -115,7 +114,6 @@ execute_post_instantiate_functions(WASMModule *module)
     ret = true;
 
 fail:
-    // wasm_exec_env_destroy(exec_env);
     return ret;
 }
 

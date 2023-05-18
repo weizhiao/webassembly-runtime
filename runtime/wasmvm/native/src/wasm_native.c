@@ -306,12 +306,6 @@ compare_type_with_signautre(uint8 type, const char signature)
         return true;
     }
 
-#if WASM_ENABLE_REF_TYPES != 0
-    if ('r' == signature && type == VALUE_TYPE_EXTERNREF)
-        return true;
-#endif
-
-    /* TODO: a v128 parameter */
     return false;
 }
 

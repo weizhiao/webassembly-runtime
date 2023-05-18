@@ -91,7 +91,6 @@ call_llvm_float_experimental_constrained_intrinsic(JITCompContext *comp_ctx,
     return ret;
 }
 
-/* Call llvm constrained libm-equivalent intrinsic */
 LLVMValueRef
 call_llvm_libm_experimental_constrained_intrinsic(JITCompContext *comp_ctx,
                                                   JITFuncContext *func_ctx,
@@ -140,8 +139,6 @@ compile_op_float_min_max(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         return NULL;
     }
 
-    /* If left and right are equal, they may be zero with different sign.
-       Webassembly spec assert -0 < +0. So do a bitwise here. */
     if (!(left_int =
               LLVMBuildBitCast(comp_ctx->builder, left, int_type, "left_int")) ||
         !(right_int = LLVMBuildBitCast(comp_ctx->builder, right, int_type,
@@ -198,7 +195,6 @@ typedef enum BitCountType
     POP_CNT64
 } BitCountType;
 
-/* clang-format off */
 static char *bit_cnt_llvm_intrinsic[] = {
     "llvm.ctlz.i32",
     "llvm.ctlz.i64",
@@ -207,7 +203,6 @@ static char *bit_cnt_llvm_intrinsic[] = {
     "llvm.ctpop.i32",
     "llvm.ctpop.i64",
 };
-/* clang-format on */
 
 static bool
 wasm_jit_compile_int_bit_count(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
@@ -221,7 +216,6 @@ wasm_jit_compile_int_bit_count(JITCompContext *comp_ctx, JITFuncContext *func_ct
 
     zero_undef = LLVMConstInt(param_types[1], false, true);
 
-    /* Call the LLVM intrinsic function */
     if (type < POP_CNT32)
         DEF_INT_UNARY_OP(wasm_jit_call_llvm_intrinsic(
                              comp_ctx, func_ctx, bit_cnt_llvm_intrinsic[type],
@@ -249,11 +243,9 @@ compile_rems(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
 
     block_curr = LLVMGetInsertBlock(comp_ctx->builder);
 
-    /* Add 2 blocks: no_overflow_block and rems_end block */
     ADD_BASIC_BLOCK(rems_end_block, "rems_end");
     ADD_BASIC_BLOCK(no_overflow_block, "rems_no_overflow");
 
-    /* Create condition br */
     if (!LLVMBuildCondBr(comp_ctx->builder, overflow_cond, rems_end_block,
                          no_overflow_block))
     {
@@ -261,24 +253,20 @@ compile_rems(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         return false;
     }
 
-    /* Translate no_overflow_block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, no_overflow_block);
 
     LLVM_BUILD_OP_OR_INTRINSIC(SRem, left, right, no_overflow_value,
                                is_i32 ? "i32.rem_s" : "i64.rem_s", "rem_s",
                                false);
 
-    /* Jump to rems_end block */
     if (!LLVMBuildBr(comp_ctx->builder, rems_end_block))
     {
         wasm_jit_set_last_error("llvm build br failed.");
         return false;
     }
 
-    /* Translate rems_end_block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, rems_end_block);
 
-    /* Create result phi */
     if (!(phi = LLVMBuildPhi(comp_ctx->builder, is_i32 ? I32_TYPE : I64_TYPE,
                              "rems_result_phi")))
     {
@@ -286,7 +274,6 @@ compile_rems(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         return false;
     }
 
-    /* Add phi incoming values */
     LLVMAddIncoming(phi, &no_overflow_value, &no_overflow_block, 1);
     LLVMAddIncoming(phi, &zero, &block_curr, 1);
 
@@ -310,12 +297,10 @@ compile_int_div(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     POP_INT(right);
     POP_INT(left);
 
-    /* Check divied by zero */
     LLVM_BUILD_ICMP(LLVMIntEQ, right, is_i32 ? I32_ZERO : I64_ZERO,
                     cmp_div_zero, "cmp_div_zero");
     ADD_BASIC_BLOCK(check_div_zero_succ, "check_div_zero_success");
 
-    /* Throw conditional exception if divided by zero */
     if (!(wasm_jit_emit_exception(comp_ctx, func_ctx,
                                   EXCE_INTEGER_DIVIDE_BY_ZERO, true,
                                   cmp_div_zero, check_div_zero_succ)))
@@ -324,7 +309,6 @@ compile_int_div(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     switch (arith_op)
     {
     case INT_DIV_S:
-        /* Check integer overflow */
         if (is_i32)
             CHECK_INT_OVERFLOW(I32);
         else
@@ -332,7 +316,6 @@ compile_int_div(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
 
         ADD_BASIC_BLOCK(check_overflow_succ, "check_overflow_success");
 
-        /* Throw conditional exception if integer overflow */
         if (!(wasm_jit_emit_exception(comp_ctx, func_ctx,
                                       EXCE_INTEGER_OVERFLOW, true, overflow,
                                       check_overflow_succ)))
@@ -350,7 +333,6 @@ compile_int_div(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         PUSH_INT(res);
         return true;
     case INT_REM_S:
-        /*  Webassembly spec requires it return 0 */
         if (is_i32)
             CHECK_INT_OVERFLOW(I32);
         else

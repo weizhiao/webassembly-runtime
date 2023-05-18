@@ -237,7 +237,6 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
     start_block->end_addr = wasm_block->end_addr;
     wasm_block = wasm_block->next_block;
 
-    /* Start to translate the opcodes */
     LLVMPositionBuilderAtEnd(
         comp_ctx->builder,
         start_block->llvm_entry_block);
@@ -260,7 +259,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
         case WASM_OP_IF:
         {
             value_type = read_uint8(frame_ip);
-            if (value_type == VALUE_TYPE_I32 || value_type == VALUE_TYPE_I64 || value_type == VALUE_TYPE_F32 || value_type == VALUE_TYPE_F64 || value_type == VALUE_TYPE_V128 || value_type == VALUE_TYPE_VOID || value_type == VALUE_TYPE_FUNCREF || value_type == VALUE_TYPE_EXTERNREF)
+            if (value_type == VALUE_TYPE_I32 || value_type == VALUE_TYPE_I64 || value_type == VALUE_TYPE_F32 || value_type == VALUE_TYPE_F64 || value_type == VALUE_TYPE_VOID || value_type == VALUE_TYPE_FUNCREF)
             {
                 param_count = 0;
                 param_types = NULL;
@@ -1109,7 +1108,6 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
         }
     }
 
-    /* Move func_return block to the bottom */
     if (func_ctx->func_return_block)
     {
         LLVMBasicBlockRef last_block = LLVMGetLastBasicBlock(func_ctx->func);
@@ -1117,7 +1115,6 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             LLVMMoveBasicBlockAfter(func_ctx->func_return_block, last_block);
     }
 
-    /* Move got_exception block to the bottom */
     if (func_ctx->got_exception_block)
     {
         LLVMBasicBlockRef last_block = LLVMGetLastBasicBlock(func_ctx->func);
@@ -1172,9 +1169,6 @@ bool wasm_jit_compile_wasm(WASMModule *module)
     if ((err = LLVMOrcLLLazyJITAddLLVMIRModule(
              comp_ctx->orc_jit, orc_main_dylib, orc_thread_safe_module)))
     {
-        /* If adding the ThreadSafeModule fails then we need to clean it up
-           by ourselves, otherwise the orc orc_jit will manage the memory.
-         */
         LLVMOrcDisposeThreadSafeModule(orc_thread_safe_module);
         wasm_jit_handle_llvm_errmsg("failed to addIRModule", err);
         return false;

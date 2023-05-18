@@ -14,7 +14,7 @@ extern "C"
                             LLVMBasicBlockRef cond_br_else_block);
 
 #ifdef __cplusplus
-} /* end of extern "C" */
+}
 #endif
 
-#endif /* end of _WASM_JIT_EMIT_EXCEPTION_H_ */
+#endif

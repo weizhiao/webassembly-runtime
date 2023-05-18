@@ -40,7 +40,6 @@ typedef struct BranchBlock
 
 typedef struct WASMLoaderContext
 {
-    /* frame ref stack */
     uint8 *frame_ref;
     uint8 *frame_ref_bottom;
     uint32 frame_ref_size;
@@ -49,7 +48,6 @@ typedef struct WASMLoaderContext
     uint32 stack_num;
     uint32 max_stack_num;
 
-    /* frame csp stack */
     BranchBlock *frame_csp;
     BranchBlock *frame_csp_bottom;
     uint32 frame_csp_size;

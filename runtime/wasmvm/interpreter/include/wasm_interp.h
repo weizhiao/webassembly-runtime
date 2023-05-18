@@ -22,4 +22,4 @@ void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
                            WASMFunction *function, uint32 argc,
                            uint32 argv[]);
 
-#endif /* end of _WASM_INTERP_H */
+#endif

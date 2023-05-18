@@ -64,8 +64,6 @@ bool llvm_jit_data_drop(WASMModule *module, uint32 seg_index)
 {
 
     module->data_segments[seg_index].data_length = 0;
-    /* Currently we can't free the dropped data segment
-       as they are stored in wasm bytecode */
     return true;
 }
 
@@ -139,7 +137,6 @@ bool wasm_jit_compile_op_memory_grow(JITCompContext *comp_ctx, JITFuncContext *f
 
     POP_I32(delta);
 
-    /* Function type of wasm_jit_enlarge_memory() */
     param_types[0] = INT8_TYPE_PTR;
     param_types[1] = I32_TYPE;
     ret_type = INT8_TYPE;
@@ -150,7 +147,6 @@ bool wasm_jit_compile_op_memory_grow(JITCompContext *comp_ctx, JITFuncContext *f
         return false;
     }
 
-    /* JIT mode, call the function directly */
     if (!(func_ptr_type = LLVMPointerType(func_type, 0)))
     {
         wasm_jit_set_last_error("llvm add pointer type failed.");
@@ -162,7 +158,6 @@ bool wasm_jit_compile_op_memory_grow(JITCompContext *comp_ctx, JITFuncContext *f
         return false;
     }
 
-    /* Call function wasm_jit_enlarge_memory() */
     param_values[0] = func_ctx->wasm_module;
     param_values[1] = delta;
     if (!(ret_value = LLVMBuildCall2(comp_ctx->builder, func_type, func,
@@ -174,7 +169,6 @@ bool wasm_jit_compile_op_memory_grow(JITCompContext *comp_ctx, JITFuncContext *f
 
     BUILD_ICMP(LLVMIntUGT, ret_value, I8_ZERO, ret_value, "mem_grow_ret");
 
-    /* ret_value = ret_value == true ? delta : pre_page_count */
     if (!(ret_value = LLVMBuildSelect(comp_ctx->builder, ret_value, mem_size,
                                       I32_NEG_ONE, "mem_grow_ret")))
     {
@@ -198,7 +192,6 @@ check_bulk_memory_overflow(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMBasicBlockRef check_succ;
     LLVMValueRef mem_size;
 
-    /* Get memory base address and memory data size */
     if (func_ctx->mem_space_unchanged)
     {
         mem_base_addr = func_ctx->mem_info.mem_base_addr;
@@ -238,7 +231,6 @@ check_bulk_memory_overflow(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* maddr = mem_base_addr + offset */
     if (!(maddr = LLVMBuildInBoundsGEP2(comp_ctx->builder, INT8_TYPE,
                                         mem_base_addr, &offset, 1, "maddr")))
     {
@@ -274,7 +266,6 @@ bool wasm_jit_compile_op_memory_init(JITCompContext *comp_ctx, JITFuncContext *f
 
     GET_WASM_JIT_FUNCTION(llvm_jit_memory_init, 5);
 
-    /* Call function wasm_jit_memory_init() */
     param_values[0] = func_ctx->wasm_module;
     param_values[1] = seg;
     param_values[2] = offset;
@@ -302,8 +293,6 @@ bool wasm_jit_compile_op_memory_init(JITCompContext *comp_ctx, JITFuncContext *f
         goto fail;
     }
 
-    /* If memory.init failed, return this function
-       so the runtime can catch the exception */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, mem_init_fail);
     if (!wasm_jit_build_zero_function_ret(comp_ctx, func_ctx, wasm_jit_func_type))
     {
@@ -331,8 +320,6 @@ bool wasm_jit_compile_op_data_drop(JITCompContext *comp_ctx, JITFuncContext *fun
     ret_type = INT8_TYPE;
 
     GET_WASM_JIT_FUNCTION(llvm_jit_data_drop, 2);
-
-    /* Call function wasm_jit_data_drop() */
     param_values[0] = func_ctx->wasm_module;
     param_values[1] = seg;
     if (!(ret_value = LLVMBuildCall2(comp_ctx->builder, func_type, func,

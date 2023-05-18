@@ -55,10 +55,8 @@ static bool jit_call_indirect(JITCompContext *comp_ctx, JITFuncContext *func_ctx
 
     llvm_func_type = LLVMFunctionType(INT8_TYPE, import_func_param_types, 4, false);
 
-    /* prepare function pointer */
     func_ptr_type = LLVMPointerType(llvm_func_type, 0);
 
-    /* JIT mode, call the function directly */
     llvm_func = I64_CONST((uint64)(uintptr_t)wasm_runtime_invoke_native);
     llvm_func = LLVMConstIntToPtr(llvm_func, func_ptr_type);
 
@@ -165,7 +163,6 @@ jit_call_direct(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     {
         llvm_ret_values[0] = llvm_ret;
         llvm_ext_result_types = jit_func_type->llvm_result_types + 1;
-        /* Load extra result from its address and push to stack */
         for (i = 0; i < ext_ret_count; i++)
         {
             snprintf(buf, sizeof(buf), "func_ext_ret%d", i);
@@ -317,7 +314,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
 
     POP_I32(llvm_elem_idx);
 
-    /* get the cur size of the table instance */
     if (!(llvm_offset = I32_CONST(get_tbl_inst_offset(tbl_idx) + offsetof(WASMTable, cur_size))))
     {
         HANDLE_FAILURE("LLVMConstInt");
@@ -342,7 +338,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Check if (uint32)elem index >= table size */
     if (!(cmp_elem_idx = LLVMBuildICmp(comp_ctx->builder, LLVMIntUGE, llvm_elem_idx,
                                        table_size_const, "cmp_elem_idx")))
     {
@@ -350,7 +345,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Throw exception if elem index >= table size */
     if (!(check_elem_idx_succ = LLVMAppendBasicBlockInContext(
               comp_ctx->context, func_ctx->func, "check_elem_idx_succ")))
     {
@@ -365,7 +359,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
                                   cmp_elem_idx, check_elem_idx_succ)))
         goto fail;
 
-    /* load data as i32* */
     if (!(llvm_offset = I32_CONST(get_tbl_inst_offset(tbl_idx) + offsetof(WASMTable, table_data))))
     {
         HANDLE_FAILURE("LLVMConstInt");
@@ -389,7 +382,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Load function index */
     LLVMBuildGEP(llvm_table_elem, I32_TYPE, llvm_table_elem,
                  llvm_elem_idx, "table_elem");
 
@@ -400,7 +392,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Check if func_idx == -1 */
     if (!(cmp_func_idx = LLVMBuildICmp(comp_ctx->builder, LLVMIntEQ, llvm_func_idx,
                                        I32_NEG_ONE, "cmp_func_idx")))
     {
@@ -408,7 +399,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Throw exception if func_idx == -1 */
     if (!(check_func_idx_succ = LLVMAppendBasicBlockInContext(
               comp_ctx->context, func_ctx->func, "check_func_idx_succ")))
     {
@@ -423,7 +413,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
                                   true, cmp_func_idx, check_func_idx_succ)))
         goto fail;
 
-    /* Load function type index */
     LLVMBuildGEP(ftype_idx_ptr, I32_TYPE, func_ctx->func_type_indexes,
                  llvm_func_idx, "ftype_idx_ptr");
 
@@ -434,7 +423,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Check if function type index not equal */
     if (!(cmp_ftype_idx = LLVMBuildICmp(comp_ctx->builder, LLVMIntNE, ftype_idx,
                                         ftype_idx_const, "cmp_ftype_idx")))
     {
@@ -442,7 +430,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Throw exception if ftype_idx != ftype_idx_const */
     if (!(check_ftype_idx_succ = LLVMAppendBasicBlockInContext(
               comp_ctx->context, func_ctx->func, "check_ftype_idx_succ")))
     {
@@ -458,17 +445,13 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
                                   cmp_ftype_idx, check_ftype_idx_succ)))
         goto fail;
 
-    /* Initialize parameter types of the LLVM function */
     total_param_count = 1 + param_count;
 
-    /* Extra function results' addresses (except the first one) are
-       appended to aot function parameters. */
     if (result_count > 1)
         total_param_count += result_count - 1;
 
     llvm_param_types = jit_func_type->llvm_param_types;
 
-    /* Allocate memory for parameters */
     total_size = sizeof(LLVMValueRef) * (uint64)total_param_count;
     if (!(llvm_param_values = wasm_runtime_malloc(total_size)))
     {
@@ -476,15 +459,12 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* First parameter is exec env */
     j = 0;
     llvm_param_values[j++] = func_ctx->exec_env;
 
-    /* Pop parameters from stack */
     for (i = param_count - 1; (int32)i >= 0; i--)
         POP(llvm_param_values[i + j]);
 
-    /* Prepare extra parameters */
     ext_cell_num = 0;
     for (i = 1; i < result_count; i++)
     {
@@ -514,7 +494,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Add basic blocks */
     block_call_import = LLVMAppendBasicBlockInContext(
         comp_ctx->context, func_ctx->func, "call_indirect");
     block_call_non_import = LLVMAppendBasicBlockInContext(
@@ -534,7 +513,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
 
     llvm_import_func_count = I32_CONST(wasm_module->import_function_count);
 
-    /* Check if func_idx < import_func_count */
     if (!(cmp_func_idx = LLVMBuildICmp(comp_ctx->builder, LLVMIntULT, llvm_func_idx,
                                        llvm_import_func_count, "cmp_func_idx")))
     {
@@ -542,8 +520,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* If func_idx < import_func_count, jump to call import block,
-       else jump to call non-import block */
     if (!LLVMBuildCondBr(comp_ctx->builder, cmp_func_idx, block_call_import,
                          block_call_non_import))
     {
@@ -551,7 +527,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Add result phis for return block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, block_return);
 
     if (result_count > 0)
@@ -575,10 +550,8 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         }
     }
 
-    /* Translate call import block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, block_call_import);
 
-    /* Allocate memory for result values */
     if (result_count > 0)
     {
         total_size = sizeof(LLVMValueRef) * (uint64)result_count;
@@ -603,10 +576,8 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Translate call non-import block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, block_call_non_import);
 
-    /* Load function pointer */
     jit_call_direct(comp_ctx, func_ctx, wasm_type, jit_func_type, llvm_func_idx, llvm_param_values, llvm_ret_values, -1);
 
     block_curr = LLVMGetInsertBlock(comp_ctx->builder);
@@ -621,7 +592,6 @@ bool wasm_jit_compile_op_call_indirect(WASMModule *wasm_module, JITCompContext *
         goto fail;
     }
 
-    /* Translate function return block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, block_return);
 
     for (i = 0; i < result_count; i++)

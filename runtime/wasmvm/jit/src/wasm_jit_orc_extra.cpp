@@ -129,8 +129,6 @@ void LLVMOrcLLLazyJITBuilderSetJITTargetMachineBuilder(
     LLVMOrcLLLazyJITBuilderRef Builder, LLVMOrcJITTargetMachineBuilderRef JTMP)
 {
     unwrap(Builder)->setJITTargetMachineBuilder(*unwrap(JTMP));
-    /* Destroy the JTMP, similar to
-       LLVMOrcLLJITBuilderSetJITTargetMachineBuilder */
     LLVMOrcDisposeJITTargetMachineBuilder(JTMP);
 }
 
@@ -143,27 +141,24 @@ PartitionFunction(GlobalValueSet Requested)
     {
         if (isa<Function>(GV) && GV->hasName())
         {
-            auto &F = cast<Function>(*GV);       /* get LLVM function */
-            const Module *M = F.getParent();     /* get LLVM module */
-            auto GVName = GV->getName();         /* get the function name */
-            const char *gvname = GVName.begin(); /* C function name */
+            auto &F = cast<Function>(*GV);
+            const Module *M = F.getParent();
+            auto GVName = GV->getName();
+            const char *gvname = GVName.begin();
             const char *wrapper;
             uint32 prefix_len = strlen(WASM_JIT_FUNC_PREFIX);
 
-            /* Convert "wasm_jit_func#n_wrapper" to "wasm_jit_func#n" */
             if (strstr(gvname, WASM_JIT_FUNC_PREFIX) && (wrapper = strstr(gvname + prefix_len, "_wrapper")))
             {
                 char buf[16] = {0};
                 char func_name[64];
                 int group_stride, i, j;
-                /* Get AOT function index */
                 memcpy(buf, gvname + prefix_len,
                        (uint32)(wrapper - (gvname + prefix_len)));
                 i = atoi(buf);
 
                 group_stride = WASM_ORC_JIT_BACKEND_THREAD_NUM;
 
-                /* Compile some functions each time */
                 for (j = 0; j < WASM_ORC_JIT_COMPILE_THREAD_NUM; j++)
                 {
                     snprintf(func_name, sizeof(func_name), "%s%d",

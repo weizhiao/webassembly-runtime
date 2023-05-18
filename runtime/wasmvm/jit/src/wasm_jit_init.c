@@ -9,7 +9,6 @@ init_func_type_indexes(WASMModule *module)
     uint64 total_size = (uint64)sizeof(uint32) * all_function_count;
     WASMType **wasm_types = module->types;
 
-    /* Allocate memory */
     if (!(module->func_type_indexes =
               wasm_runtime_malloc(total_size)))
     {
@@ -163,7 +162,6 @@ bool compile_jit_functions(WASMModule *module)
     uint32 define_function_count = module->function_count - module->import_function_count;
     uint32 i, j;
 
-    /* Create threads to compile the jit functions */
     for (i = 0; i < thread_num && i < define_function_count; i++)
     {
         module->orcjit_thread_args[i].comp_ctx = module->comp_ctx;
@@ -174,7 +172,6 @@ bool compile_jit_functions(WASMModule *module)
                              (void *)&module->orcjit_thread_args[i],
                              APP_THREAD_STACK_SIZE_DEFAULT) != 0)
         {
-            /* Terminate the threads created */
             module->orcjit_stop_compiling = true;
             for (j = 0; j < i; j++)
             {
@@ -184,14 +181,12 @@ bool compile_jit_functions(WASMModule *module)
         }
     }
 
-    /* Wait until all jit functions are compiled for eager mode */
     for (i = 0; i < thread_num; i++)
     {
         if (module->orcjit_threads[i])
             os_thread_join(module->orcjit_threads[i], NULL);
     }
 
-    /* Ensure all the llvm-jit functions are compiled */
     for (i = 0; i < module->function_count; i++)
     {
         if (!module->func_ptrs_compiled[i])

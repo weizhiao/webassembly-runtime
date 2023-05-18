@@ -79,8 +79,6 @@ bool wasm_runtime_wasi_init(WASMModule *module,
         return false;
     }
 
-    /* process argv[0], trip the path and suffix, only keep the program name
-     */
     if (!copy_string_array((const char **)argv, argc, &argv_buf, &argv_list,
                            &argv_buf_size))
     {
@@ -141,11 +139,6 @@ bool wasm_runtime_wasi_init(WASMModule *module,
     }
     addr_pool_inited = true;
 
-    /* Prepopulate curfds with stdin, stdout, and stderr file descriptors.
-     *
-     * If -1 is given, use STDIN_FILENO (0), STDOUT_FILENO (1),
-     * STDERR_FILENO (2) respectively.
-     */
     if (!fd_table_insert_existing(curfds, 0, (stdinfd != -1) ? stdinfd : 0) || !fd_table_insert_existing(curfds, 1, (stdoutfd != -1) ? stdoutfd : 1) || !fd_table_insert_existing(curfds, 2, (stderrfd != -1) ? stderrfd : 2))
     {
         wasm_set_exception(module,
@@ -182,7 +175,6 @@ bool wasm_runtime_wasi_init(WASMModule *module,
         fd_prestats_insert(prestats, dir_list[i], wasm_fd);
     }
 
-    /* addr_pool(textual) -> apool */
     for (i = 0; i < addr_pool_size; i++)
     {
         char *cp, *address, *mask;

@@ -37,7 +37,6 @@ bool wasm_enlarge_memory(WASMModule *module, uint32 inc_page_count)
     total_size_new = num_bytes_per_page * (uint64)total_page_count;
 
     if (inc_page_count <= 0)
-        /* No need to enlarge memory */
         return true;
 
     if (total_page_count > max_page_count)
@@ -47,7 +46,6 @@ bool wasm_enlarge_memory(WASMModule *module, uint32 inc_page_count)
 
     if (total_size_new > UINT32_MAX)
     {
-        /* Resize to 1 page with size 4G-1 */
         num_bytes_per_page = UINT32_MAX;
         total_page_count = max_page_count = 1;
         total_size_new = UINT32_MAX;
@@ -105,7 +103,6 @@ bool wasm_runtime_validate_app_addr(WASMModule *module_inst_comm,
         goto fail;
     }
 
-    /* integer overflow check */
     if (app_offset > UINT32_MAX - size)
     {
         goto fail;

@@ -14,7 +14,6 @@ bool globals_instantiate(WASMModule *module)
         global_data_offset += wasm_value_type_size(global->type);
     }
 
-    /* instantiate globals from global section */
     for (i = 0; i < module->global_count; i++, global++)
     {
         global->data_offset = global_data_offset;
@@ -23,7 +22,6 @@ bool globals_instantiate(WASMModule *module)
 
     if (global_count > 0)
     {
-        /* Initialize the global data */
         if (!(global_data = global_data_start = wasm_runtime_malloc(global_data_offset)))
         {
             goto fail;

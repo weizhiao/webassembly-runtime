@@ -192,7 +192,6 @@ void wasm_jit_apply_llvm_new_pass_manager(JITCompContext *comp_ctx, LLVMModuleRe
     FAM.registerPass([&]
                      { return TargetLibraryAnalysis(*TLII); });
 
-    /* Register the AA manager first so that our version is the one used */
     AAManager AA = PB.buildDefaultAAPipeline();
     FAM.registerPass([&]
                      { return std::move(AA); });

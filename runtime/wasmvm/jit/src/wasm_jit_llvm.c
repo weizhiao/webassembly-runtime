@@ -24,9 +24,6 @@ wasm_type_to_llvm_type(JITLLVMTypes *llvm_types, uint8 wasm_type)
     return NULL;
 }
 
-/**
- * Add LLVM function
- */
 static LLVMValueRef
 wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
                        uint32 type_index, uint32 func_index,
@@ -44,7 +41,6 @@ wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
 
     llvm_func_type = comp_ctx->jit_func_types[type_index].llvm_func_type;
 
-    /* Add LLVM function */
     snprintf(func_name, sizeof(func_name), "%s%d", WASM_JIT_FUNC_PREFIX, func_index);
     if (!(func = LLVMAddFunction(module, func_name, llvm_func_type)))
     {
@@ -62,10 +58,6 @@ wasm_jit_add_llvm_func(JITCompContext *comp_ctx, LLVMModuleRef module,
     backend_thread_num = WASM_ORC_JIT_BACKEND_THREAD_NUM;
     compile_thread_num = WASM_ORC_JIT_COMPILE_THREAD_NUM;
 
-    /* Add the jit wrapper function with simple prototype, so that we
-       can easily call it to trigger its compilation and let LLVM JIT
-       compile the actual jit functions by adding them into the function
-       list in the PartitionFunction callback */
     if ((func_index % (backend_thread_num * compile_thread_num) < backend_thread_num))
     {
         func_type_wrapper = LLVMFunctionType(VOID_TYPE, NULL, 0, false);
@@ -103,9 +95,6 @@ fail:
     return func;
 }
 
-/**
- * Create first JITBlock, or function block for the function
- */
 static bool
 wasm_jit_create_func_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, WASMType *func_type)
 {
@@ -143,11 +132,9 @@ create_argv_buf(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     LLVMValueRef argv_buf_offset = I32_THREE, argv_buf_addr;
     LLVMBuilderRef builder = comp_ctx->builder;
 
-    /* Get argv buffer address */
     LLVMBuildGEP(argv_buf_addr, OPQ_PTR_TYPE, func_ctx->exec_env,
                  argv_buf_offset, "argv_buf_addr");
 
-    /* Convert to int32 pointer type */
     if (!(func_ctx->argv_buf = LLVMBuildBitCast(comp_ctx->builder, argv_buf_addr,
                                                 I32_TYPE_PTR, "argv_buf_ptr")))
     {
@@ -443,19 +430,16 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
         goto fail;
     }
 
-    /* Get argv buffer address */
     if (!create_argv_buf(comp_ctx, func_ctx))
     {
         goto fail;
     }
 
-    /* Create local variables */
     if (!create_local_variables(comp_ctx, func_ctx, wasm_func))
     {
         goto fail;
     }
 
-    /* Create base addr, end addr, data size of mem, heap */
     if (wasm_func->has_op_memory)
     {
         create_memory_info(wasm_module, comp_ctx, func_ctx);
@@ -465,13 +449,11 @@ wasm_jit_create_func_context(WASMModule *wasm_module, JITCompContext *comp_ctx,
     create_table_info(comp_ctx, func_ctx);
     create_cur_exception(comp_ctx, func_ctx);
 
-    /* Load function type indexes */
     if (wasm_func->has_op_call_indirect)
     {
         create_func_type_indexes(comp_ctx, func_ctx);
     }
 
-    /* Load function pointers */
     create_func_ptrs(comp_ctx, func_ctx);
 
     return func_ctx;
@@ -505,7 +487,6 @@ wasm_jit_create_func_contexts(WASMModule *wasm_module, JITCompContext *comp_ctx)
 
     define_function_count = comp_ctx->func_ctx_count;
 
-    /* Allocate memory */
     size = sizeof(JITFuncContext *) * (uint64)define_function_count;
     if (!(func_ctxes = wasm_runtime_malloc(size)))
     {
@@ -517,7 +498,6 @@ wasm_jit_create_func_contexts(WASMModule *wasm_module, JITCompContext *comp_ctx)
 
     func = wasm_module->functions + wasm_module->import_function_count;
 
-    /* Create each function context */
     for (i = 0; i < define_function_count; i++, func++)
     {
         if (!(func_ctxes[i] =
@@ -612,7 +592,6 @@ create_llvm_func_types(WASMModule *wasm_module, JITCompContext *comp_ctx)
         {
             return false;
         }
-        /* Prepare param types */
         j = 0;
         llvm_param_types[j++] = INT8_PPTR_TYPE;
         for (k = 0; k < param_count; k++)
@@ -703,7 +682,6 @@ get_target_arch_from_triple(const char *triple, char *arch_buf, uint32 buf_size)
     uint32 i = 0;
     while (*triple != '-' && *triple != '\0' && i < buf_size - 1)
         arch_buf[i++] = *triple++;
-    /* Make sure buffer is long enough */
 }
 
 void wasm_jit_handle_llvm_errmsg(const char *string, LLVMErrorRef err)
@@ -762,7 +740,6 @@ create_target_machine_detect_host(JITCompContext *comp_ctx)
     LOG_VERBOSE("LLVM ORCJIT detected CPU \"%s\", with features \"%s\"\n", cpu,
                 features);
 
-    /* create TargetMachine */
     target_machine = LLVMCreateTargetMachine(
         target, triple, cpu, features, LLVMCodeGenLevelDefault,
         LLVMRelocDefault, LLVMCodeModelJITDefault);
@@ -773,7 +750,6 @@ create_target_machine_detect_host(JITCompContext *comp_ctx)
     }
     comp_ctx->target_machine = target_machine;
 
-    /* Save target arch */
     get_target_arch_from_triple(triple, comp_ctx->target_arch,
                                 sizeof(comp_ctx->target_arch));
     ret = true;
@@ -816,8 +792,6 @@ orc_jit_create(JITCompContext *comp_ctx)
     LLVMOrcLLLazyJITBuilderSetNumCompileThreads(
         builder, WASM_ORC_JIT_COMPILE_THREAD_NUM);
 
-    /* Ownership transfer:
-       LLVMOrcJITTargetMachineBuilderRef -> LLVMOrcLLJITBuilderRef */
     LLVMOrcLLLazyJITBuilderSetJITTargetMachineBuilder(builder, jtmb);
     err = LLVMOrcCreateLLLazyJIT(&orc_jit, builder);
     if (err != LLVMErrorSuccess)
@@ -826,10 +800,8 @@ orc_jit_create(JITCompContext *comp_ctx)
                                     err);
         goto fail;
     }
-    /* Ownership transfer: LLVMOrcLLJITBuilderRef -> LLVMOrcLLJITRef */
     builder = NULL;
 
-    /* Ownership transfer: local -> JITCompContext */
     comp_ctx->orc_jit = orc_jit;
     orc_jit = NULL;
     ret = true;
@@ -852,7 +824,6 @@ wasm_jit_create_comp_context(WASMModule *wasm_module)
     uint32 i;
     LLVMTargetDataRef target_data_ref;
 
-    /* Allocate memory */
     if (!(comp_ctx = wasm_runtime_malloc(sizeof(JITCompContext))))
     {
         wasm_jit_set_last_error("allocate memory failed.");
@@ -865,7 +836,6 @@ wasm_jit_create_comp_context(WASMModule *wasm_module)
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
-    /* Create LLVM context, module and builder */
     comp_ctx->orc_thread_safe_context = LLVMOrcCreateNewThreadSafeContext();
     if (!comp_ctx->orc_thread_safe_context)
     {
@@ -1061,7 +1031,6 @@ __call_llvm_intrinsic(const JITCompContext *comp_ctx,
     func_type =
         LLVMFunctionType(ret_type, param_types, (uint32)param_count, false);
 
-    /* Call the LLVM intrinsic function */
     if (!(ret = LLVMBuildCall2(comp_ctx->builder, func_type, func, param_values,
                                (uint32)param_count, "call")))
     {
@@ -1083,7 +1052,6 @@ wasm_jit_call_llvm_intrinsic(const JITCompContext *comp_ctx,
     uint64 total_size;
     int i = 0;
 
-    /* Create param values */
     total_size = sizeof(LLVMValueRef) * (uint64)param_count;
     if (!(param_values = wasm_runtime_malloc((uint32)total_size)))
     {
@@ -1091,7 +1059,6 @@ wasm_jit_call_llvm_intrinsic(const JITCompContext *comp_ctx,
         return false;
     }
 
-    /* Load each param value */
     va_start(argptr, param_count);
     while (i < param_count)
         param_values[i++] = va_arg(argptr, LLVMValueRef);
@@ -1115,7 +1082,6 @@ wasm_jit_call_llvm_intrinsic_v(const JITCompContext *comp_ctx,
     uint64 total_size;
     int i = 0;
 
-    /* Create param values */
     total_size = sizeof(LLVMValueRef) * (uint64)param_count;
     if (!(param_values = wasm_runtime_malloc((uint32)total_size)))
     {
@@ -1123,7 +1089,6 @@ wasm_jit_call_llvm_intrinsic_v(const JITCompContext *comp_ctx,
         return false;
     }
 
-    /* Load each param value */
     while (i < param_count)
         param_values[i++] = va_arg(param_value_list, LLVMValueRef);
 

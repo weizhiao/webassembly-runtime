@@ -33,7 +33,7 @@ extern "C"
     wasm_jit_compile_op_memory_fill(JITCompContext *comp_ctx, JITFuncContext *func_ctx);
 
 #ifdef __cplusplus
-} /* end of extern "C" */
+}
 #endif
 
 #endif

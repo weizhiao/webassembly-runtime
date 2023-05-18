@@ -126,7 +126,6 @@ format_block_name(char *name, uint32 name_size, uint32 block_index,
             uint32 _i;                                                            \
             uint64 _size;                                                         \
             LLVMBasicBlockRef _block_curr = CURR_BLOCK();                         \
-            /* Allocate memory */                                                 \
             _size = sizeof(LLVMValueRef) * (uint64)block->result_count;           \
             if (_size >= UINT32_MAX || !(block->result_phis =                     \
                                              wasm_runtime_malloc((uint32)_size))) \
@@ -221,19 +220,16 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
 
         if (block->else_addr)
         {
-            /* Create else block */
             format_block_name(name, sizeof(name), block_indexes[label_type],
                               label_type, LABEL_ELSE);
             CREATE_BLOCK(block->llvm_else_block, name);
             MOVE_BLOCK_AFTER(block->llvm_else_block,
                              block->llvm_entry_block);
-            /* Create condition br IR */
             BUILD_COND_BR(value, block->llvm_entry_block,
                           block->llvm_else_block);
         }
         else
         {
-            /* Create condition br IR */
             BUILD_COND_BR(value, block->llvm_entry_block,
                           block->llvm_end_block);
         }
@@ -263,7 +259,6 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
             return false;
         }
 
-        /* Create param phis */
         for (i = 0; i < block->param_count; i++)
         {
             SET_BUILDER_POS(block->llvm_entry_block);
@@ -280,7 +275,6 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
 
             if (block->llvm_else_block)
             {
-                /* Build else param phis */
                 SET_BUILDER_POS(block->llvm_else_block);
                 snprintf(name, sizeof(name), "else%d_phi%d", block_indexes[block->label_type],
                          i);
@@ -295,9 +289,6 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
         }
         SET_BUILDER_POS(block_curr);
 
-        /* Pop param values from current block's
-         * value stack and add to param phis.
-         */
         for (i = 0; i < block->param_count; i++)
         {
             param_index = block->param_count - 1 - i;
@@ -306,20 +297,17 @@ bool wasm_compile_op_block(JITCompContext *comp_ctx, JITFuncContext *func_ctx, W
                             &block_curr, 1);
             if (block->llvm_else_block)
             {
-                /* has else branch, add to else param phis */
                 LLVMAddIncoming(block->else_param_phis[param_index], &value,
                                 &block_curr, 1);
             }
         }
     }
 
-    /* Push param phis to the new block */
     for (i = 0; i < block->param_count; i++)
     {
         PUSH(block->param_phis[i]);
     }
 
-    /* Push the new block to block stack */
     PUSH_JITBLOCK(block);
 
     SET_BUILDER_POS(block->llvm_entry_block);
@@ -341,7 +329,6 @@ bool wasm_jit_compile_op_else(JITCompContext *comp_ctx, JITFuncContext *func_ctx
     block->is_translate_else = true;
     block->is_polymorphic = false;
 
-    /* Comes from the if branch of BLOCK if */
     CREATE_RESULT_VALUE_PHIS(block);
     for (i = 0; i < block->result_count; i++)
     {
@@ -390,7 +377,6 @@ bool wasm_jit_compile_op_end(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
     // 将结束块移动到当前块后
     MOVE_BLOCK_AFTER_CURR(block->llvm_end_block);
 
-    /* Handle block result values */
     CREATE_RESULT_VALUE_PHIS(block);
     for (i = 0; i < result_count; i++)
     {
@@ -405,7 +391,6 @@ bool wasm_jit_compile_op_end(JITCompContext *comp_ctx, JITFuncContext *func_ctx)
         PUSH(block->result_phis[i]);
     }
 
-    /* Jump to the end block */
     BUILD_BR(block->llvm_end_block);
     SET_BUILDER_POS(block->llvm_end_block);
 
@@ -437,7 +422,6 @@ bool wasm_jit_compile_op_br(JITCompContext *comp_ctx, JITFuncContext *func_ctx, 
     }
     else
     {
-        /* Handle result values */
         CREATE_RESULT_VALUE_PHIS(block_dst);
         for (i = 0; i < block_dst->result_count; i++)
         {
@@ -445,7 +429,6 @@ bool wasm_jit_compile_op_br(JITCompContext *comp_ctx, JITFuncContext *func_ctx, 
             POP(value_ret);
             ADD_TO_RESULT_PHIS(block_dst, value_ret, result_index);
         }
-        /* Jump to the end block */
         BUILD_BR(block_dst->llvm_end_block);
     }
 
@@ -466,10 +449,8 @@ bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ct
 
     if (!LLVMIsConstant(value_cmp))
     {
-        /* Compare value is not constant, create condition br IR */
         block_dst = BR_TARGET_JITBLOCK(br_depth);
 
-        /* Create llvm else block */
         CREATE_BLOCK(llvm_else_block, "br_if_else");
         MOVE_BLOCK_AFTER_CURR(llvm_else_block);
 
@@ -501,12 +482,10 @@ bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ct
             BUILD_COND_BR(value_cmp, block_dst->llvm_entry_block,
                           llvm_else_block);
 
-            /* Move builder to else block */
             SET_BUILDER_POS(llvm_else_block);
         }
         else
         {
-            /* Handle result values */
             if (block_dst->result_count)
             {
                 size = sizeof(LLVMValueRef) * (uint64)block_dst->result_count;
@@ -531,11 +510,9 @@ bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ct
                 values = NULL;
             }
 
-            /* Condition jump to end block */
             BUILD_COND_BR(value_cmp, block_dst->llvm_end_block,
                           llvm_else_block);
 
-            /* Move builder to else block */
             SET_BUILDER_POS(llvm_else_block);
         }
     }
@@ -543,12 +520,10 @@ bool wasm_jit_compile_op_br_if(JITCompContext *comp_ctx, JITFuncContext *func_ct
     {
         if ((int32)LLVMConstIntGetZExtValue(value_cmp) != 0)
         {
-            /* Compare value is not 0, condition is true, same as op_br */
             return wasm_jit_compile_op_br(comp_ctx, func_ctx, br_depth, frame_ip);
         }
         else
         {
-            /* Compare value is not 0, condition is false, skip br_if */
             return true;
         }
     }
@@ -580,14 +555,12 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
 
     if (!LLVMIsConstant(value_cmp))
     {
-        /* Compare value is not constant, create switch IR */
         for (i = 0; i <= br_count; i++)
         {
             target_block = func_ctx->block_stack - br_depths[i] - 1;
 
             if (target_block->label_type != LABEL_TYPE_LOOP)
             {
-                /* Handle result values */
                 if (target_block->result_count)
                 {
                     size = sizeof(LLVMValueRef) * (uint64)target_block->result_count;
@@ -613,7 +586,6 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
             }
             else
             {
-                /* Handle Loop parameters */
                 if (target_block->param_count)
                 {
                     size = sizeof(LLVMValueRef) * (uint64)target_block->param_count;
@@ -638,7 +610,6 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
             }
         }
 
-        /* Create switch IR */
         if (!(value_switch = LLVMBuildSwitch(comp_ctx->builder, value_cmp,
                                              default_llvm_block, br_count)))
         {
@@ -646,7 +617,6 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
             return false;
         }
 
-        /* Add each case for switch IR */
         for (i = 0; i < br_count; i++)
         {
             value_case = I32_CONST(i);
@@ -661,7 +631,6 @@ bool wasm_jit_compile_op_br_table(JITCompContext *comp_ctx, JITFuncContext *func
     }
     else
     {
-        /* Compare value is constant, create br IR */
         depth_idx = (uint32)LLVMConstIntGetZExtValue(value_cmp);
         br_depth = br_depths[br_count];
         if (depth_idx < br_count)
@@ -694,7 +663,6 @@ bool wasm_jit_compile_op_return(JITCompContext *comp_ctx, JITFuncContext *func_c
 
     if (result_count)
     {
-        /* Store extra result values to function parameters */
         for (i = 0; i < result_count - 1; i++)
         {
             result_index = result_count - 1 - i;
@@ -707,7 +675,6 @@ bool wasm_jit_compile_op_return(JITCompContext *comp_ctx, JITFuncContext *func_c
                 goto fail;
             }
         }
-        /* Return the first result value */
         POP(llvm_value);
         if (!(ret = LLVMBuildRet(comp_ctx->builder, llvm_value)))
         {

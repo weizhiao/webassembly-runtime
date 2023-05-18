@@ -3,17 +3,12 @@
 
 #include "platform.h"
 
-/** Value Type */
 #define VALUE_TYPE_I32 0x7F
 #define VALUE_TYPE_I64 0X7E
 #define VALUE_TYPE_F32 0x7D
 #define VALUE_TYPE_F64 0x7C
-#define VALUE_TYPE_V128 0x7B
 #define VALUE_TYPE_FUNCREF 0x70
-#define VALUE_TYPE_EXTERNREF 0x6F
 #define VALUE_TYPE_VOID 0x40
-/* Used by AOT */
-#define VALUE_TYPE_I1 0x41
 
 // 使用其他全局变量初始化的全局变量
 #define VALUE_TYPE_GLOBAL 0x43
@@ -30,9 +25,7 @@
 #define INIT_EXPR_TYPE_F32_CONST 0x43
 #define INIT_EXPR_TYPE_F64_CONST 0x44
 #define INIT_EXPR_TYPE_V128_CONST 0xFD
-/* = WASM_OP_REF_FUNC */
 #define INIT_EXPR_TYPE_FUNCREF_CONST 0xD2
-/* = WASM_OP_REF_NULL */
 #define INIT_EXPR_TYPE_REFNULL_CONST 0xD0
 #define INIT_EXPR_TYPE_GET_GLOBAL 0x23
 #define INIT_EXPR_TYPE_ERROR 0xff
@@ -84,16 +77,6 @@ typedef enum
     Execute
 } WASMModuleStage;
 
-typedef union V128
-{
-    int8 i8x16[16];
-    int16 i16x8[8];
-    int32 i32x8[4];
-    int64 i64x2[2];
-    float32 f32x4[4];
-    float64 f64x2[2];
-} V128;
-
 typedef union WASMValue
 {
     int32 i32;
@@ -105,7 +88,6 @@ typedef union WASMValue
     float32 f32;
     float64 f64;
     uintptr_t addr;
-    V128 v128;
 } WASMValue;
 
 typedef struct InitializerExpression
@@ -134,7 +116,6 @@ typedef struct WASMExport
 
 typedef struct WASMElement
 {
-    /* 0 to 7 */
     uint32 mode;
     uint32 elem_type;
     bool is_dropped;
@@ -224,13 +205,9 @@ typedef struct WASMTable
 
 typedef struct WASMGlobal
 {
-    /* value type, VALUE_TYPE_I32/I64/F32/F64 */
     uint8 type;
-    /* mutable or constant */
     bool is_mutable;
-    /* data offset to base_addr of WASMMemory */
     uint32 data_offset;
-    /* initial value */
     WASMValue initial_value;
 } WASMGlobal, WASMGlobalImport;
 
@@ -273,16 +250,11 @@ typedef struct WASMFunction
     uint16 result_count;
 
     uint16 local_count;
-    /* cell num of parameters */
     uint16 param_cell_num;
-    /* cell num of return type */
     uint16 ret_cell_num;
-    /* cell num of local variables, 0 for import function */
     uint16 local_cell_num;
     uint16 *local_offsets;
-    /* parameter types */
     uint8 *param_types;
-    /* local types, NULL for import function */
     uint8 *local_types;
     uint8 *result_types;
     uint32 max_stack_cell_num;

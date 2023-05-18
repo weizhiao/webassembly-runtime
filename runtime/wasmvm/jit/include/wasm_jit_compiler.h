@@ -150,7 +150,6 @@ typedef enum IntArithmetic
             goto fail;                                                                                          \
         }                                                                                                       \
                                                                                                                 \
-        /* JIT mode, call the function directly */                                                              \
         if (!(func_ptr_type = LLVMPointerType(func_type, 0)))                                                   \
         {                                                                                                       \
             wasm_jit_set_last_error("llvm add pointer type failed.");                                           \
@@ -168,4 +167,4 @@ bool wasm_jit_emit_llvm_file(JITCompContext *comp_ctx, const char *file_name);
 bool wasm_jit_emit_WASM_JIT_file(JITCompContext *comp_ctx, WASMModule *wasm_module,
                                  const char *file_name);
 
-#endif /* end of _WASM_JIT_COMPILER_H_ */
+#endif

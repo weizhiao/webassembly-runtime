@@ -30,7 +30,6 @@ extern "C"
 {
 #endif
 
-/* Opaque pointer type */
 #define OPQ_PTR_TYPE INT8_TYPE_PTR
     typedef struct JITValue
     {
@@ -45,7 +44,7 @@ extern "C"
 
     typedef struct JITBlock
     {
-        /* LABEL_TYPE_BLOCK/LOOP/IF/FUNCTION */
+
         uint32 label_type;
 
         // 是否在翻译else分支
@@ -55,21 +54,16 @@ extern "C"
         uint8 *else_addr;
         uint8 *end_addr;
 
-        /* LLVM label points to code begin */
         LLVMBasicBlockRef llvm_entry_block;
-        /* LLVM label points to code else */
         LLVMBasicBlockRef llvm_else_block;
-        /* LLVM label points to code end */
         LLVMBasicBlockRef llvm_end_block;
 
-        /* Param count/types/PHIs of this block */
         uint32 param_count;
         uint32 stack_num;
         uint8 *param_types;
         LLVMValueRef *param_phis;
         LLVMValueRef *else_param_phis;
 
-        /* Result count/types/PHIs of this block */
         uint32 result_count;
         uint8 *result_types;
         LLVMValueRef *result_phis;
@@ -168,9 +162,6 @@ extern "C"
         LLVMTypeRef llvm_func_type;
     } JITFuncType;
 
-    /**
-     * Compiler context
-     */
     typedef struct JITCompContext
     {
 
@@ -243,7 +234,7 @@ extern "C"
     void wasm_jit_handle_llvm_errmsg(const char *string, LLVMErrorRef err);
 
 #ifdef __cplusplus
-} /* end of extern "C" */
+}
 #endif
 
 #endif

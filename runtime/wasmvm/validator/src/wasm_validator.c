@@ -333,7 +333,6 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
             POP_TYPE(return_types[i]);
         }
 
-        /* Check stack is empty */
         if (loader_ctx->stack_cell_num != block->stack_cell_num)
         {
             wasm_set_exception(module, "type mismatch: stack size does not match block type");
@@ -354,7 +353,6 @@ check_block_stack(WASMModule *module, WASMLoaderContext *loader_ctx, BranchBlock
         return false;
     }
 
-    /* Check stack values match return types */
     frame_ref = loader_ctx->frame_ref - 1;
     for (i = (int32)return_count - 1; i >= 0; i--)
     {
@@ -367,7 +365,6 @@ fail:
     return false;
 }
 
-/* reset the stack to the state of before entering the last block */
 #define RESET_STACK()                                                                 \
     do                                                                                \
     {                                                                                 \
@@ -377,7 +374,6 @@ fail:
         loader_ctx->frame_ref = loader_ctx->frame_ref_bottom + loader_ctx->stack_num; \
     } while (0)
 
-/* set current block's stack polymorphic state */
 #define SET_CUR_BLOCK_STACK_POLYMORPHIC_STATE(flag)          \
     do                                                       \
     {                                                        \
@@ -534,9 +530,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
             validate_read_uint8(p, value_type);
             if (is_byte_a_type(value_type))
             {
-                /* If the first byte is one of these special values:
-                 * 0x40/0x7F/0x7E/0x7D/0x7C, take it as the type of
-                 * the single return value. */
                 block_type.is_value_type = true;
                 block_type.u.value_type = value_type;
             }
@@ -555,7 +548,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
                 block_type.u.type = module->types[type_index];
             }
 
-            /* Pop block parameters from stack */
             if (BLOCK_HAS_PARAM(block_type))
             {
                 WASMType *wasm_type = block_type.u.type;
@@ -570,7 +562,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
             ADD_BLOCK_IN_FUNCTION();
 #endif
 
-            /* Pass parameters to block */
             if (BLOCK_HAS_PARAM(block_type))
             {
                 WASMType *wasm_type = block_type.u.type;
@@ -731,8 +722,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
                     uint8 *tmp_ret_types = NULL;
                     uint32 tmp_ret_count = 0;
 
-                    /* Check whether all table items have the same return
-                     * type */
                     if (frame_csp_tmp->label_type != LABEL_TYPE_LOOP)
                         tmp_ret_count = block_get_result_types(
                             &frame_csp_tmp->block_type, &tmp_ret_types);
@@ -813,7 +802,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
                 goto fail;
             }
 
-            /* skip elem idx */
             POP_I32();
 
             if (type_idx >= module->type_count)
@@ -1132,7 +1120,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
 
         case WASM_OP_MEMORY_SIZE:
             CHECK_MEMORY();
-            /* reserved byte 0x00 */
             if (*p++ != 0x00)
             {
                 wasm_set_exception(module,
@@ -1466,7 +1453,6 @@ bool wasm_validator_code(WASMModule *module, WASMFunction *func)
             }
             case WASM_OP_MEMORY_COPY:
             {
-                /* both src and dst memory index should be 0 */
                 if (*(int16 *)p != 0x0000)
                     goto fail_zero_byte_expected;
                 p += 2;
@@ -1591,7 +1577,6 @@ bool wasm_validator(WASMModule *module)
         index = export->index;
         switch (export->kind)
         {
-        /* function index */
         case EXPORT_KIND_FUNC:
             if (index >= module->function_count + module->import_function_count)
             {

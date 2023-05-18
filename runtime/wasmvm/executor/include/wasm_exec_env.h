@@ -3,7 +3,6 @@
 
 #include "wasm_type.h"
 
-/* Execution environment */
 typedef struct WASMExecEnv
 {
     struct WASMExecEnv *next;
@@ -39,4 +38,4 @@ wasm_exec_env_create(WASMModule *module_inst);
 
 void wasm_exec_env_destroy(WASMExecEnv *exec_env);
 
-#endif /* end of _WASM_EXEC_ENV_H */
+#endif

@@ -47,7 +47,6 @@ void print_opcode(uint8 opcode, uint32 fidx)
 
 #endif
 
-/* For LOAD opcodes */
 #define LOAD_I64(addr) (*(int64 *)(addr))
 #define LOAD_F64(addr) (*(float64 *)(addr))
 #define LOAD_I32(addr) (*(int32 *)(addr))
@@ -627,7 +626,6 @@ word_copy(uint32 *dest, uint32 *src, unsigned num)
 {
     if (dest != src)
     {
-        /* No overlap buffer */
         for (; num > 0; num--)
             *dest++ = *src++;
     }
@@ -708,7 +706,7 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
 
 #define HANDLE_OP_END() FETCH_OPCODE_AND_DISPATCH()
 
-#else /* else of WASM_ENABLE_DISPATCH */
+#else
 #define HANDLE_OP(opcode) case opcode:
 
 #if WASM_ENABLE_DEBUG_INTERP != 0
@@ -720,7 +718,7 @@ wasm_interp_call_func_native(WASMExecEnv *exec_env,
 #define HANDLE_OP_END() continue
 #endif
 
-#endif /* end of WASM_ENABLE_DISPATCH */
+#endif
 
 static inline uint8 *
 get_global_addr(uint8 *global_data, WASMGlobal *global)
@@ -786,7 +784,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
 #else
     FETCH_OPCODE_AND_DISPATCH();
 #endif
-            /* control instructions */
             HANDLE_OP(WASM_OP_UNREACHABLE)
             {
                 wasm_set_exception(module, "unreachable");
@@ -894,7 +891,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 FREE_FRAME(exec_env, frame);
 
                 if (!prev_frame->ip)
-                    /* Called from native. */
                     return;
 
                 // 恢复栈帧
@@ -1004,7 +1000,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 }
 
                 frame->function = cur_func;
-                /* always call module own functions */
                 cur_func = module->functions + fidx;
 
                 cur_func_type = cur_func->func_type;
@@ -1018,7 +1013,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 goto call_func_from_interp;
             }
 
-            /* parametric instructions */
             HANDLE_OP(WASM_OP_DROP)
             {
                 frame_sp--;
@@ -1052,7 +1046,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* variable instructions */
             HANDLE_OP(WASM_OP_GET_LOCAL)
             {
                 GET_LOCAL_INDEX_TYPE_AND_OFFSET();
@@ -1225,7 +1218,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* memory load instructions */
             HANDLE_OP(WASM_OP_I32_LOAD)
             HANDLE_OP(WASM_OP_F32_LOAD)
             {
@@ -1385,7 +1377,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* memory store instructions */
             HANDLE_OP(WASM_OP_I32_STORE)
             HANDLE_OP(WASM_OP_F32_STORE)
             {
@@ -1475,7 +1466,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* memory size and memory grow instructions */
             HANDLE_OP(WASM_OP_MEMORY_SIZE)
             {
                 uint32 reserved;
@@ -1499,10 +1489,7 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 }
                 else
                 {
-                    /* success, return previous page count */
                     PUSH_I32(prev_page_count);
-                    /* update memory size, no need to update memory ptr as
-                       it isn't changed in wasm_enlarge_memory */
                     linear_mem_size =
                         num_bytes_per_page * memory->cur_page_count;
                 }
@@ -1511,7 +1498,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* constant instructions */
             HANDLE_OP(WASM_OP_I32_CONST)
             DEF_OP_I_CONST(int32, I32);
             HANDLE_OP_END();
@@ -1537,7 +1523,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* comparison instructions of i32 */
             HANDLE_OP(WASM_OP_I32_EQZ)
             {
                 DEF_OP_EQZ(I32);
@@ -1604,7 +1589,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* comparison instructions of i64 */
             HANDLE_OP(WASM_OP_I64_EQZ)
             {
                 DEF_OP_EQZ(I64);
@@ -1671,7 +1655,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* comparison instructions of f32 */
             HANDLE_OP(WASM_OP_F32_EQ)
             {
                 DEF_OP_CMP(float32, F32, ==);
@@ -1708,7 +1691,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* comparison instructions of f64 */
             HANDLE_OP(WASM_OP_F64_EQ)
             {
                 DEF_OP_CMP(float64, F64, ==);
@@ -1745,7 +1727,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* numberic instructions of i32 */
             HANDLE_OP(WASM_OP_I32_CLZ)
             {
                 DEF_OP_BIT_COUNT(uint32, I32, clz32);
@@ -1908,7 +1889,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* numberic instructions of i64 */
             HANDLE_OP(WASM_OP_I64_CLZ)
             {
                 DEF_OP_BIT_COUNT(uint64, I64, clz64);
@@ -2071,7 +2051,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* numberic instructions of f32 */
             HANDLE_OP(WASM_OP_F32_ABS)
             {
                 DEF_OP_MATH(float32, F32, fabsf);
@@ -2175,7 +2154,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* numberic instructions of f64 */
             HANDLE_OP(WASM_OP_F64_ABS)
             {
                 DEF_OP_MATH(float64, F64, fabs);
@@ -2279,7 +2257,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* conversions of i32 */
             HANDLE_OP(WASM_OP_I32_WRAP_I64)
             {
                 int32 value = (int32)(POP_I64() & 0xFFFFFFFFLL);
@@ -2313,7 +2290,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* conversions of i64 */
             HANDLE_OP(WASM_OP_I64_EXTEND_S_I32)
             {
                 DEF_OP_CONVERT(int64, I64, int32, I32);
@@ -2354,7 +2330,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* conversions of f32 */
             HANDLE_OP(WASM_OP_F32_CONVERT_S_I32)
             {
                 DEF_OP_CONVERT(float32, F32, int32, I32);
@@ -2385,7 +2360,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* conversions of f64 */
             HANDLE_OP(WASM_OP_F64_CONVERT_S_I32)
             {
                 DEF_OP_CONVERT(float64, F64, int32, I32);
@@ -2416,7 +2390,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                 HANDLE_OP_END();
             }
 
-            /* reinterpretations */
             HANDLE_OP(WASM_OP_I32_REINTERPRET_F32)
             HANDLE_OP(WASM_OP_I64_REINTERPRET_F64)
             HANDLE_OP(WASM_OP_F32_REINTERPRET_I32)
@@ -2504,7 +2477,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                     uint8 *data;
 
                     read_leb_uint32(frame_ip, frame_ip_end, segment);
-                    /* skip memory index */
                     frame_ip++;
 
                     bytes = (uint64)(uint32)POP_I32();
@@ -2544,7 +2516,6 @@ wasm_interp_call_func_bytecode(WASMModule *module,
                     CHECK_BULK_MEMORY_OVERFLOW(src, len, msrc);
                     CHECK_BULK_MEMORY_OVERFLOW(dst, len, mdst);
 
-                    /* allowing the destination and source to overlap */
                     memmove(mdst, msrc, len);
                     break;
                 }
@@ -2636,11 +2607,8 @@ llvm_jit_call_func_bytecode(WASMModule *module_inst,
         uint32 ext_ret_cell = wasm_get_cell_num(ext_ret_types, ext_ret_count);
         uint64 size;
 
-        /* Allocate memory all arguments */
         size =
-            sizeof(uint32) * (uint64)argc            /* original arguments */
-            + sizeof(void *) * (uint64)ext_ret_count /* extra result values' addr */
-            + sizeof(uint32) * (uint64)ext_ret_cell; /* extra result values */
+            sizeof(uint32) * (uint64)argc + sizeof(void *) * (uint64)ext_ret_count + sizeof(uint32) * (uint64)ext_ret_cell;
         if (size > sizeof(argv1_buf))
         {
             if (size > UINT32_MAX || !(argv1 = wasm_runtime_malloc((uint32)size)))
@@ -2650,14 +2618,11 @@ llvm_jit_call_func_bytecode(WASMModule *module_inst,
             }
         }
 
-        /* Copy original arguments */
         memcpy(argv1, argv, sizeof(uint32) * argc);
 
-        /* Get the extra result value's address */
         ext_rets =
             argv1 + argc + sizeof(void *) / sizeof(uint32) * ext_ret_count;
 
-        /* Append each extra result value's address to original arguments */
         for (i = 0; i < ext_ret_count; i++)
         {
             *(uintptr_t *)(argv1 + argc + sizeof(void *) / sizeof(uint32) * i) =
@@ -2675,7 +2640,6 @@ llvm_jit_call_func_bytecode(WASMModule *module_inst,
             return ret;
         }
 
-        /* Get extra result values */
         switch (func_type->result[0])
         {
         case VALUE_TYPE_I32:
@@ -2707,7 +2671,7 @@ llvm_jit_call_func_bytecode(WASMModule *module_inst,
         return ret;
     }
 }
-#endif /* end of WASM_ENABLE_JIT != 0 */
+#endif
 
 void wasm_interp_call_wasm(WASMModule *module_inst, WASMExecEnv *exec_env,
                            WASMFunction *function, uint32 argc,

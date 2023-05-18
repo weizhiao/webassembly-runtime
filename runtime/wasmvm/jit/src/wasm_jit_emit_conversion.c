@@ -32,7 +32,6 @@ trunc_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
     LLVMOPFCmp(is_greater, LLVMRealOGE, operand, max_value, "fcmp_max_value");
     LLVMOPOr(res, is_less, is_greater, "is_overflow");
 
-    /* Check if float value out of range */
     if (!(check_overflow_succ = LLVMAppendBasicBlockInContext(
               comp_ctx->context, func_ctx->func, "check_overflow_succ")))
     {
@@ -100,7 +99,6 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate is_nan block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, is_nan_block);
     if (!LLVMBuildBr(comp_ctx->builder, res_block))
     {
@@ -108,7 +106,6 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate check_nan_succ block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, check_nan_succ);
     LLVMOPFCmp(is_less, LLVMRealOLE, operand, min_value, "fcmp_min_value");
     if (!LLVMBuildCondBr(comp_ctx->builder, is_less, is_less_block,
@@ -118,7 +115,6 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate is_less block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, is_less_block);
     if (!LLVMBuildBr(comp_ctx->builder, res_block))
     {
@@ -126,7 +122,6 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate check_less_succ block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, check_less_succ);
     LLVMOPFCmp(is_greater, LLVMRealOGE, operand, max_value, "fcmp_max_value");
     if (!LLVMBuildCondBr(comp_ctx->builder, is_greater, is_greater_block,
@@ -136,7 +131,6 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate is_greater block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, is_greater_block);
     if (!LLVMBuildBr(comp_ctx->builder, res_block))
     {
@@ -144,12 +138,9 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate check_greater_succ block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, check_greater_succ);
 
     char intrinsic[128];
-
-    /* Integer width is always 32 or 64 here. */
 
     snprintf(intrinsic, sizeof(intrinsic), "i%d_trunc_f%d_%c",
              LLVMGetIntTypeWidth(dest_type),
@@ -167,9 +158,7 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         goto fail;
     }
 
-    /* Start to translate res_block */
     LLVMPositionBuilderAtEnd(comp_ctx->builder, res_block);
-    /* Create result phi */
     if (!(phi = LLVMBuildPhi(comp_ctx->builder, dest_type,
                              "trunc_sat_result_phi")))
     {
@@ -177,7 +166,6 @@ trunc_sat_float_to_int(JITCompContext *comp_ctx, JITFuncContext *func_ctx,
         return false;
     }
 
-    /* Add phi incoming values */
     if (dest_type == I32_TYPE)
     {
         if (sign)
