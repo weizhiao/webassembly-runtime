@@ -91,9 +91,6 @@ extern "C"
         LLVMValueRef exec_env;
         LLVMValueRef wasm_module;
         LLVMValueRef argv_buf;
-        LLVMValueRef native_stack_bound;
-        LLVMValueRef native_stack_top_min_addr;
-        LLVMValueRef native_symbol;
         LLVMValueRef func_ptrs;
 
         JITMemInfo mem_info;

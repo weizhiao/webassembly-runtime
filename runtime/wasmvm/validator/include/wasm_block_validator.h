@@ -3,10 +3,10 @@
 
 #include "wasm_validator.h"
 
-bool wasm_validator_push_block(WASMLoaderContext *ctx, uint8 label_type,
+bool wasm_validator_push_block(WASMValidator *ctx, uint8 label_type,
                                BlockType block_type, uint8 *start_addr);
 
-bool wasm_validator_pop_block(WASMModule *module, WASMLoaderContext *ctx);
+bool wasm_validator_pop_block(WASMModule *module, WASMValidator *ctx);
 
 #define PUSH_BLOCK(loader_ctx, label_type, block_type, _start_addr)        \
     do                                                                     \

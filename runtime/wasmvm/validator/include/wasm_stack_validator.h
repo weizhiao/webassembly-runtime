@@ -13,9 +13,9 @@
         }                                                \
     } while (0)
 
-bool wasm_loader_push_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 type);
+bool wasm_loader_push_frame_ref(WASMModule *module, WASMValidator *ctx, uint8 type);
 
-bool wasm_loader_pop_frame_ref(WASMModule *module, WASMLoaderContext *ctx, uint8 type);
+bool wasm_loader_pop_frame_ref(WASMModule *module, WASMValidator *ctx, uint8 type);
 
 #define TEMPLATE_PUSH(Type)                                                       \
     do                                                                            \

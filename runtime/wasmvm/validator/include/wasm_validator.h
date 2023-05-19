@@ -38,27 +38,27 @@ typedef struct BranchBlock
     bool is_stack_polymorphic;
 } BranchBlock;
 
-typedef struct WASMLoaderContext
+typedef struct WASMValidator
 {
-    uint8 *frame_ref;
-    uint8 *frame_ref_bottom;
-    uint32 frame_ref_size;
+    uint8 *value_stack;
+    uint8 *value_stack_bottom;
+    uint32 value_stack_size;
     uint32 stack_cell_num;
     uint32 max_stack_cell_num;
     uint32 stack_num;
     uint32 max_stack_num;
 
-    BranchBlock *frame_csp;
-    BranchBlock *frame_csp_bottom;
-    uint32 frame_csp_size;
-    uint32 csp_num;
-    uint32 max_csp_num;
+    BranchBlock *block_stack;
+    BranchBlock *block_stack_bottom;
+    uint32 block_stack_size;
+    uint32 block_stack_num;
+    uint32 max_block_stack_num;
 
     WASMBranchTable *branch_table;
     WASMBranchTable *branch_table_bottom;
     uint32 branch_table_num;
     uint32 branch_table_size;
 
-} WASMLoaderContext;
+} WASMValidator;
 
 #endif
