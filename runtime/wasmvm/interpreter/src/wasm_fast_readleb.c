@@ -6,7 +6,6 @@ fast_read_leb(const uint8 *buf, uint32 *p_offset, uint32 maxbits, bool sign)
     uint64 result = 0, byte;
     uint32 offset = *p_offset;
     uint32 shift = 0;
-
     while (true)
     {
         byte = buf[offset++];
