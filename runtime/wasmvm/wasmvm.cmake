@@ -23,8 +23,10 @@ set (EXECUTOR_DIR ${WASMVM_DIR}/executor)
 include_directories(${EXECUTOR_DIR}/include)
 
 #WASI
+if (RUNTIME_BUILD_WASI EQUAL 1)
 set (WASI_DIR ${WASMVM_DIR}/wasi)
 include(${WASI_DIR}/wasi.cmake)
+endif()
 
 #本地函数调用
 set (NATIVE_DIR ${WASMVM_DIR}/native)

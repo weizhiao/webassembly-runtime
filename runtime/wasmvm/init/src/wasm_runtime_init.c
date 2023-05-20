@@ -1,8 +1,10 @@
 #include "wasm_runtime_init_api.h"
 #include "wasm_native.h"
-#include "wasm_wasi.h"
 #include "wasm_memory.h"
 #include "wasm_exception.h"
+
+#if WASM_ENABLE_WASI != 0
+#include "wasm_wasi.h"
 
 static bool
 copy_string_array(const char *array[], uint32 array_size, char **buf_ptr,
@@ -253,6 +255,8 @@ fail:
         wasm_runtime_free(ns_lookup_list);
     return false;
 }
+
+#endif
 
 bool wasm_runtime_init_env()
 {

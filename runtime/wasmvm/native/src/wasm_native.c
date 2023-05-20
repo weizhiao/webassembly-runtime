@@ -510,6 +510,8 @@ bool wasm_native_init()
     NativeSymbol *native_symbols;
     uint32 n_native_symbols;
 
+#if WASM_ENABLE_WASI != 0
+
     n_native_symbols = get_libc_wasi_export_apis(&native_symbols);
     if (!wasm_native_register_natives("wasi_unstable", native_symbols,
                                       n_native_symbols))
@@ -517,6 +519,7 @@ bool wasm_native_init()
     if (!wasm_native_register_natives("wasi_snapshot_preview1", native_symbols,
                                       n_native_symbols))
         goto fail;
+#endif
 
     return true;
 fail:

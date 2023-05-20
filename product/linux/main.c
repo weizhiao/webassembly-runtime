@@ -203,6 +203,7 @@ int main(int argc, char *argv[])
     if (!wasm_instantiate(module, value_stack_size, exectution_stack_size))
         goto fail;
 
+#if WASM_ENABLE_WASI != 0
     if (!wasm_runtime_wasi_init(
             module,
             dir_list, dir_list_size,
@@ -214,6 +215,7 @@ int main(int argc, char *argv[])
     {
         goto fail;
     }
+#endif
 
     if (!execute_main(module, argc, argv))
     {
