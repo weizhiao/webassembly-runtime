@@ -17,19 +17,12 @@ typedef struct WASMExecEnv
     {
         uint8 *top_boundary;
 
-        uint8 *top;
-
-        uint8 *bottom;
-    } value_stack;
-
-    struct
-    {
-        uint8 *top_boundary;
+        uint8 *func_frame_top;
 
         uint8 *top;
 
         uint8 *bottom;
-    } exectution_stack;
+    } exec_stack;
 
 } WASMExecEnv;
 

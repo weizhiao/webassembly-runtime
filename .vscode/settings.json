@@ -125,7 +125,8 @@
         "config.h": "c",
         "platform_internal.h": "c",
         "math.h": "c",
-        "any": "c"
+        "any": "c",
+        "execution": "c"
     },
     "cmake.configureOnOpen": true
 }
