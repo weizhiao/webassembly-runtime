@@ -18,7 +18,7 @@ if(NOT DEFINED RUNTIME_BUILD_BUILTIN)
   set (RUNTIME_BUILD_BUILTIN 1)
 endif()
 
-set(RUNTIME_BUILD_WASI 0)
+set(RUNTIME_BUILD_WASI 1)
 
 file (GLOB_RECURSE source_all ${PRODUCT_DIR}/main.c)
 set (MAIN_SOURCE ${source_all})
