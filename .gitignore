@@ -1,5 +1,5 @@
 build
 mytest
 tests
-.vscode
+.vscode/
 deps
