@@ -66,9 +66,9 @@ def build_llvm(llvm_dir, backends, projects):
     build_dir.mkdir(exist_ok=True)
 
     lib_llvm_core_library = build_dir.joinpath("lib/libLLVMCore.a").resolve()
-    if lib_llvm_core_library.exists():
-        print(f"Please remove {build_dir} manually and try again")
-        return build_dir
+    # if lib_llvm_core_library.exists():
+    #     print(f"Please remove {build_dir} manually and try again")
+    #     return build_dir
 
     compile_options = " ".join(
         LLVM_COMPILE_OPTIONS
@@ -81,7 +81,7 @@ def build_llvm(llvm_dir, backends, projects):
     print(f"{CONFIG_CMD}")
     subprocess.check_call(shlex.split(CONFIG_CMD), cwd=build_dir)
 
-    BUILD_CMD = f"cmake --build . --target package --parallel {8}"
+    BUILD_CMD = f"cmake --build . --target package --parallel {1}"
     subprocess.check_call(shlex.split(BUILD_CMD), cwd=build_dir)
 
     return build_dir
@@ -154,8 +154,8 @@ def main():
     try:
         print(f"==================== CLONE LLVM ====================")
         llvm_info = {"repo": "https://github.com/llvm/llvm-project.git",
-            "branch": "release/16.x"}
-        llvm_dir = clone_llvm(deps_dir, llvm_info["repo"], llvm_info["branch"])
+            "tag": "llvmorg-16.0.3"}
+        llvm_dir = clone_llvm(deps_dir, llvm_info["repo"], llvm_info["tag"])
 
         print()
         print(f"==================== BUILD LLVM ====================")

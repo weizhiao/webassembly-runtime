@@ -365,6 +365,7 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
 
         case WASM_OP_SELECT:
         case WASM_OP_SELECT_64:
+        {
             LLVMValueRef llvm_val1, llvm_val2;
             POP_COND(llvm_cond);
             POP(llvm_val2);
@@ -377,7 +378,9 @@ wasm_jit_compile_func(WASMModule *wasm_module, JITCompContext *comp_ctx, uint32 
             }
 
             PUSH(llvm_value);
+
             break;
+        }
 
         case WASM_OP_GET_LOCAL:
             skip_leb_uint32(frame_ip, frame_ip_end);
