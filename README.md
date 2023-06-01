@@ -10,7 +10,7 @@ runtime：运行时本身
 使用JIT前需要执行以下命令：  
 1 cd build-scripts  
 2 python3 ./build_llvm.py   
-build_llvm.py脚本会下载llvm 16.0.3版本，该版本是运行时中JIT使用的llvm版本  
+build_llvm.py脚本会下载并构建llvm 16.0.3版本，该版本是运行时中JIT使用的llvm版本  
 
 构建方式：  
 1 在根目录下创建build目录  
