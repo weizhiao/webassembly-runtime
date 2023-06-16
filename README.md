@@ -1,5 +1,5 @@
 # a-fast-wasm-runtime
-一个有解释器和JIT编译器的WebAssembly运行时，支持WASI（WASI来源于wamr）
+一个有解释器和JIT编译器的WebAssembly运行时，支持WASI（WASI来源于wamr）   
 本仓库供交流学习使用   
 注：目前JIT编译器仍存在bug，在运行某些wasm程序时会出错
 
